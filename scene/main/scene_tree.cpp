@@ -1636,6 +1636,14 @@ void SceneTree::queue_delete(RequiredParam<Object> rp_object) {
 	delete_queue.push_back(p_object->get_instance_id());
 }
 
+void SceneTree::queue_delete_multiple(Object *const *p_objects, int p_count) {
+	_THREAD_SAFE_METHOD_
+	for (int i = 0; i < p_count; i++) {
+		p_objects[i]->_is_queued_for_deletion = true;
+		delete_queue.push_back(p_objects[i]->get_instance_id());
+	}
+}
+
 int SceneTree::get_node_count() const {
 	return nodes_in_tree_count;
 }

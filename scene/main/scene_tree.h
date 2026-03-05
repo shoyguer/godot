@@ -409,6 +409,7 @@ public:
 	int get_node_count() const;
 
 	void queue_delete(RequiredParam<Object> rp_object);
+	void queue_delete_multiple(Object *const *p_objects, int p_count);
 
 	Vector<Node *> get_nodes_in_group(const StringName &p_group);
 	Node *get_first_node_in_group(const StringName &p_group);

@@ -1778,6 +1778,120 @@ void Node::remove_child(RequiredParam<Node> rp_child) {
 	}
 }
 
+void Node::free_child(int p_index, bool p_include_internal) {
+	ERR_FAIL_COND_MSG(data.tree && !Thread::is_main_thread(), "Removing children from a node inside the SceneTree is only allowed from the main thread. Use call_deferred(\"free_child\", index).");
+	ERR_FAIL_COND_MSG(data.blocked > 0, "Parent node is busy adding/removing children, `free_child()` can't be called at this time. Consider using `free_child.call_deferred(index)` instead.");
+
+	Node *child = get_child(p_index, p_include_internal);
+	ERR_FAIL_NULL(child);
+
+	memdelete(child);
+}
+
+void Node::free_children(bool p_include_internal) {
+	ERR_FAIL_COND_MSG(data.tree && !Thread::is_main_thread(), "Removing children from a node inside the SceneTree is only allowed from the main thread. Use call_deferred(\"free_children\").");
+	ERR_FAIL_COND_MSG(data.blocked > 0, "Parent node is busy adding/removing children, `free_children()` can't be called at this time. Consider using `free_children.call_deferred()` instead.");
+
+	if (data.children.is_empty()) {
+		return;
+	}
+
+	_update_children_cache();
+
+	LocalVector<Node *> to_free;
+	to_free.reserve(data.children.size());
+
+	if (p_include_internal) {
+		for (uint32_t i = 0; i < data.children_cache.size(); i++) {
+			to_free.push_back(data.children_cache[i]);
+		}
+	} else {
+		const uint32_t start = data.internal_children_front_count_cache;
+		const uint32_t end = data.children_cache.size() - data.internal_children_back_count_cache;
+		for (uint32_t i = start; i < end; i++) {
+			to_free.push_back(data.children_cache[i]);
+		}
+	}
+
+	if (to_free.is_empty()) {
+		return;
+	}
+
+	data.blocked++;
+	for (Node *child : to_free) {
+		child->_set_tree(nullptr);
+		remove_child_notify(child);
+		child->notification(NOTIFICATION_UNPARENTED);
+	}
+	data.blocked--;
+
+	for (Node *child : to_free) {
+		data.children.erase(child->data.name);
+		child->data.parent = nullptr;
+		child->data.index = -1;
+	}
+	data.children_cache_dirty = true;
+
+	notification(NOTIFICATION_CHILD_ORDER_CHANGED);
+	emit_signal(SNAME("child_order_changed"));
+
+	if (data.tree) {
+		for (Node *child : to_free) {
+			child->_propagate_after_exit_tree();
+		}
+	}
+
+	for (Node *child : to_free) {
+		memdelete(child);
+	}
+}
+
+void Node::queue_free_child(int p_index, bool p_include_internal) {
+	ERR_THREAD_GUARD
+	Node *child = get_child(p_index, p_include_internal);
+	ERR_FAIL_NULL(child);
+	child->queue_free();
+}
+
+void Node::queue_free_children(bool p_include_internal) {
+	ERR_THREAD_GUARD
+	if (data.children.is_empty()) {
+		return;
+	}
+	if (!data.tree) {
+		_update_children_cache();
+		if (p_include_internal) {
+			for (uint32_t i = 0; i < data.children_cache.size(); i++) {
+				data.children_cache[i]->queue_free();
+			}
+		} else {
+			const uint32_t start = data.internal_children_front_count_cache;
+			const uint32_t end = data.children_cache.size() - data.internal_children_back_count_cache;
+			for (uint32_t i = start; i < end; i++) {
+				data.children_cache[i]->queue_free();
+			}
+		}
+		return;
+	}
+	_update_children_cache();
+	LocalVector<Object *> to_queue;
+	to_queue.reserve(data.children.size());
+	if (p_include_internal) {
+		for (uint32_t i = 0; i < data.children_cache.size(); i++) {
+			to_queue.push_back(data.children_cache[i]);
+		}
+	} else {
+		const uint32_t start = data.internal_children_front_count_cache;
+		const uint32_t end = data.children_cache.size() - data.internal_children_back_count_cache;
+		for (uint32_t i = start; i < end; i++) {
+			to_queue.push_back(data.children_cache[i]);
+		}
+	}
+	if (!to_queue.is_empty()) {
+		data.tree->queue_delete_multiple(to_queue.ptr(), (int)to_queue.size());
+	}
+}
+
 void Node::_update_children_cache_impl() const {
 	// Assign children
 	data.children_cache.resize(data.children.size());
@@ -3740,6 +3854,8 @@ void Node::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_name"), &Node::get_name);
 	ClassDB::bind_method(D_METHOD("add_child", "node", "force_readable_name", "internal"), &Node::add_child, DEFVAL(false), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("remove_child", "node"), &Node::remove_child);
+	ClassDB::bind_method(D_METHOD("free_child", "idx", "include_internal"), &Node::free_child, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("free_children", "include_internal"), &Node::free_children, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("reparent", "new_parent", "keep_global_transform"), &Node::reparent, DEFVAL(true));
 	ClassDB::bind_method(D_METHOD("get_child_count", "include_internal"), &Node::get_child_count, DEFVAL(false)); // Note that the default value bound for include_internal is false, while the method is declared with true. This is because internal nodes are irrelevant for GDSCript.
 	ClassDB::bind_method(D_METHOD("get_children", "include_internal"), &Node::get_children, DEFVAL(false));
@@ -3846,6 +3962,8 @@ void Node::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_viewport"), &Node::get_viewport);
 
 	ClassDB::bind_method(D_METHOD("queue_free"), &Node::queue_free);
+	ClassDB::bind_method(D_METHOD("queue_free_child", "idx", "include_internal"), &Node::queue_free_child, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("queue_free_children", "include_internal"), &Node::queue_free_children, DEFVAL(false));
 
 	ClassDB::bind_method(D_METHOD("request_ready"), &Node::request_ready);
 	ClassDB::bind_method(D_METHOD("is_node_ready"), &Node::is_ready);

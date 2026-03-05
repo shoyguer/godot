@@ -321,6 +321,26 @@
 				[b]Note:[/b] As this method walks upwards in the scene tree, it can be slow in large, deeply nested nodes. Consider storing a reference to the found node in a variable. Alternatively, use [method get_node] with unique names (see [member unique_name_in_owner]).
 			</description>
 		</method>
+		<method name="free_child" keywords="delete, remove, kill">
+			<return type="void" />
+			<param index="0" name="idx" type="int" />
+			<param index="1" name="include_internal" type="bool" default="false" />
+			<description>
+				Immediately frees the child node at index [param idx] and all of its children. The index is relative to non-internal children unless [param include_internal] is [code]true[/code].
+				[b]Warning:[/b] Freeing a node while it is inside the [SceneTree] must be done from the main thread. Use [method queue_free_child] or [method Object.call_deferred] instead.
+				See also [method free_children] and [method queue_free_children].
+			</description>
+		</method>
+		<method name="free_children" keywords="delete, remove, kill, clear">
+			<return type="void" />
+			<param index="0" name="include_internal" type="bool" default="false" />
+			<description>
+				Immediately frees all children of this node and all of their children. If [param include_internal] is [code]false[/code], internal children are not freed (see [method add_child]'s [code]internal[/code] parameter).
+				Unlike freeing the children one by one, this method emits [signal child_order_changed] only once after all children have been removed.
+				[b]Warning:[/b] Freeing nodes while they are inside the [SceneTree] must be done from the main thread. Use [method queue_free_children] or [method Object.call_deferred] instead.
+				See also [method free_child] and [method queue_free_children].
+			</description>
+		</method>
 		<method name="get_accessibility_element" qualifiers="const">
 			<return type="RID" />
 			<description>
@@ -826,6 +846,25 @@
 				Queues this node to be deleted at the end of the current frame. When deleted, all of its children are deleted as well, and all references to the node and its children become invalid.
 				Unlike with [method Object.free], the node is not deleted instantly, and it can still be accessed before deletion. It is also safe to call [method queue_free] multiple times. Use [method Object.is_queued_for_deletion] to check if the node will be deleted at the end of the frame.
 				[b]Note:[/b] The node will only be freed after all other deferred calls are finished. Using this method is not always the same as calling [method Object.free] through [method Object.call_deferred].
+			</description>
+		</method>
+		<method name="queue_free_child" keywords="delete, remove, kill">
+			<return type="void" />
+			<param index="0" name="idx" type="int" />
+			<param index="1" name="include_internal" type="bool" default="false" />
+			<description>
+				Queues the child node at index [param idx] for deletion at the end of the current frame. When deleted, all of its children are deleted as well. The index is relative to non-internal children unless [param include_internal] is [code]true[/code].
+				Use this method instead of [method free_child] if you want to delete the node at the end of the frame.
+				See also [method free_child], [method free_children], and [method queue_free_children].
+			</description>
+		</method>
+		<method name="queue_free_children" keywords="delete, remove, kill, clear">
+			<return type="void" />
+			<param index="0" name="include_internal" type="bool" default="false" />
+			<description>
+				Queues all children of this node for deletion at the end of the current frame. When deleted, all of their children are deleted as well. If [param include_internal] is [code]false[/code], internal children are not freed (see [method add_child]'s [code]internal[/code] parameter).
+				This is similar to calling [method queue_free] on each child of the node.
+				See also [method free_child] and [method free_children].
 			</description>
 		</method>
 		<method name="remove_child">

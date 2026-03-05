@@ -515,6 +515,11 @@ public:
 	void add_sibling(RequiredParam<Node> rp_sibling, bool p_force_readable_name = false);
 	void remove_child(RequiredParam<Node> rp_child);
 
+	void free_child(int p_index, bool p_include_internal = false);
+	void free_children(bool p_include_internal = false);
+	void queue_free_child(int p_index, bool p_include_internal = false);
+	void queue_free_children(bool p_include_internal = false);
+
 	/// Optimal way to iterate the children of this node.
 	/// The caller is responsible to ensure:
 	/// - The thread has the rights to access the node (is_accessible_from_caller_thread() == true).
