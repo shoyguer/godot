@@ -364,6 +364,10 @@ void OS_Android::main_loop_begin() {
 		if (game_view_plugin != nullptr) {
 			game_view_plugin->connect("main_screen_changed", callable_mp_static(&OS_Android::_on_main_screen_changed));
 		}
+
+		if (EditorNode::get_singleton() != nullptr) {
+			EditorNode::get_singleton()->connect("distraction_free_mode_changed", callable_mp_static(&OS_Android::_on_distraction_free_mode_changed));
+		}
 	}
 #endif
 }
@@ -396,6 +400,10 @@ void OS_Android::main_loop_end() {
 		if (game_view_plugin != nullptr) {
 			game_view_plugin->disconnect("main_screen_changed", callable_mp_static(&OS_Android::_on_main_screen_changed));
 		}
+
+		if (EditorNode::get_singleton() != nullptr) {
+			EditorNode::get_singleton()->disconnect("distraction_free_mode_changed", callable_mp_static(&OS_Android::_on_distraction_free_mode_changed));
+		}
 	}
 #endif
 
@@ -414,6 +422,12 @@ void OS_Android::_on_main_screen_changed(const String &p_screen_name) {
 		OS_Android::get_singleton()->get_godot_java()->on_editor_workspace_selected(p_screen_name);
 	}
 }
+
+void OS_Android::_on_distraction_free_mode_changed(bool p_enable) {
+	if (OS_Android::get_singleton() != nullptr && OS_Android::get_singleton()->get_godot_java() != nullptr) {
+		OS_Android::get_singleton()->get_godot_java()->on_distraction_free_mode_changed(p_enable);
+	}
+}
 #endif
 
 void OS_Android::main_loop_focusout() {
@@ -421,7 +435,9 @@ void OS_Android::main_loop_focusout() {
 	if (OS::get_singleton()->get_main_loop()) {
 		OS::get_singleton()->get_main_loop()->notification(MainLoop::NOTIFICATION_APPLICATION_FOCUS_OUT);
 	}
-	audio_driver_android.set_pause(true);
+
+	// Only pause when we are not in PiP mode.
+	audio_driver_android.set_pause(!DisplayServerAndroid::get_singleton()->is_in_pip_mode());
 }
 
 void OS_Android::main_loop_focusin() {
