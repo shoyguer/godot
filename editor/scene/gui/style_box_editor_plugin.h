@@ -35,7 +35,38 @@
 #include "scene/gui/texture_rect.h"
 
 class Button;
+class EditorSpinSlider;
+class GridContainer;
 class StyleBox;
+class StyleBoxFlat;
+class TextureButton;
+
+class EditorPropertySideGroup : public EditorProperty {
+	GDCLASS(EditorPropertySideGroup, EditorProperty);
+
+	Vector<EditorSpinSlider *> spin_sliders;
+	Vector<TextureRect *> spin_icons;
+	Vector<String> icon_names;
+	GridContainer *grid = nullptr;
+	TextureButton *linked = nullptr;
+	Vector<String> properties;
+	bool is_int = false;
+
+	void _value_changed(double p_val, int p_idx);
+	void _store_link(bool p_linked);
+	void _update_grid_columns();
+
+protected:
+	virtual void _set_read_only(bool p_read_only) override;
+	void _notification(int p_what);
+
+public:
+	virtual void update_property() override;
+	void setup(const Vector<String> &p_properties, const Vector<String> &p_icons, const Vector<String> &p_labels,
+			bool p_is_int, double p_min, double p_max, double p_step,
+			bool p_allow_greater, bool p_allow_lesser, const String &p_suffix);
+	EditorPropertySideGroup();
+};
 
 class StyleBoxPreview : public TextureRect {
 	GDCLASS(StyleBoxPreview, TextureRect);
@@ -63,6 +94,7 @@ class EditorInspectorPluginStyleBox : public EditorInspectorPlugin {
 public:
 	virtual bool can_handle(Object *p_object) override;
 	virtual void parse_begin(Object *p_object) override;
+	virtual bool parse_property(Object *p_object, const Variant::Type p_type, const String &p_path, const PropertyHint p_hint, const String &p_hint_text, const BitField<PropertyUsageFlags> p_usage, const bool p_wide = false) override;
 };
 
 class StyleBoxEditorPlugin : public EditorPlugin {

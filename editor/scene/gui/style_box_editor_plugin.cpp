@@ -31,9 +31,163 @@
 #include "style_box_editor_plugin.h"
 
 #include "core/object/callable_mp.h"
+#include "editor/editor_string_names.h"
+#include "editor/gui/editor_spin_slider.h"
+#include "editor/settings/editor_settings.h"
 #include "editor/themes/editor_scale.h"
+#include "scene/gui/box_container.h"
 #include "scene/gui/button.h"
+#include "scene/gui/grid_container.h"
+#include "scene/gui/texture_button.h"
+#include "scene/gui/texture_rect.h"
+#include "scene/resources/style_box_flat.h"
 #include "scene/resources/style_box_texture.h"
+
+// EditorPropertySideGroup
+
+void EditorPropertySideGroup::_set_read_only(bool p_read_only) {
+	for (EditorSpinSlider *spin : spin_sliders) {
+		spin->set_read_only(p_read_only);
+	}
+}
+
+void EditorPropertySideGroup::_value_changed(double p_val, int p_idx) {
+	if (linked->is_pressed()) {
+		for (int i = 0; i < spin_sliders.size(); i++) {
+			if (i != p_idx) {
+				spin_sliders[i]->set_value_no_signal(p_val);
+			}
+		}
+	}
+
+	Vector<String> changed;
+	Array values;
+	for (int i = 0; i < spin_sliders.size(); i++) {
+		changed.push_back(properties[i]);
+		if (is_int) {
+			values.push_back((int64_t)spin_sliders[i]->get_value());
+		} else {
+			values.push_back(spin_sliders[i]->get_value());
+		}
+	}
+	emit_signal(SNAME("multiple_properties_changed"), changed, values, false);
+}
+
+void EditorPropertySideGroup::_store_link(bool p_linked) {
+	if (!get_edited_object() || properties.is_empty()) {
+		return;
+	}
+	const String key = vformat("%s:%s", get_edited_object()->get_class(), properties[0]);
+	EditorSettings::get_singleton()->set_project_metadata("linked_properties", key, p_linked);
+}
+
+void EditorPropertySideGroup::_notification(int p_what) {
+	switch (p_what) {
+		case NOTIFICATION_READY: {
+			if (get_edited_object() && !properties.is_empty()) {
+				const String key = vformat("%s:%s", get_edited_object()->get_class(), properties[0]);
+				linked->set_pressed_no_signal(EditorSettings::get_singleton()->get_project_metadata("linked_properties", key, false));
+			}
+		} break;
+
+		case NOTIFICATION_THEME_CHANGED: {
+			int icon_size = get_theme_constant(SNAME("class_icon_size"), EditorStringName(Editor));
+			for (int i = 0; i < spin_icons.size(); i++) {
+				if (i < icon_names.size()) {
+					spin_icons[i]->set_texture(get_editor_theme_icon(icon_names[i]));
+				}
+				spin_icons[i]->set_custom_minimum_size(Size2(icon_size, icon_size));
+			}
+			linked->set_texture_normal(get_editor_theme_icon(SNAME("Unlinked")));
+			linked->set_texture_pressed(get_editor_theme_icon(SNAME("Instance")));
+			linked->set_custom_minimum_size(Size2(icon_size + 8 * EDSCALE, 0));
+		} break;
+	}
+}
+
+void EditorPropertySideGroup::update_property() {
+	Object *obj = get_edited_object();
+	if (!obj) {
+		return;
+	}
+	for (int i = 0; i < spin_sliders.size(); i++) {
+		spin_sliders[i]->set_value_no_signal((double)obj->get(properties[i]));
+	}
+}
+
+void EditorPropertySideGroup::setup(const Vector<String> &p_properties, const Vector<String> &p_icons, const Vector<String> &p_labels,
+		bool p_is_int, double p_min, double p_max, double p_step,
+		bool p_allow_greater, bool p_allow_lesser, const String &p_suffix) {
+	properties = p_properties;
+	icon_names = p_icons;
+	is_int = p_is_int;
+	for (int i = 0; i < spin_sliders.size(); i++) {
+		spin_sliders[i]->set_accessibility_name(p_labels[i]);
+		spin_sliders[i]->set_min(p_min);
+		spin_sliders[i]->set_max(p_max);
+		spin_sliders[i]->set_step(p_step);
+		spin_sliders[i]->set_allow_greater(p_allow_greater);
+		spin_sliders[i]->set_allow_lesser(p_allow_lesser);
+		spin_sliders[i]->set_suffix(p_suffix);
+		spin_sliders[i]->set_editing_integer(p_is_int);
+	}
+}
+
+void EditorPropertySideGroup::_update_grid_columns() {
+	// Switch between 2 sliders per row (4 grid columns) and 1 per row (2 grid columns)
+	// depending on available width, so the layout adapts when the inspector panel is narrow.
+	grid->set_columns(grid->get_size().x >= 200.0f * EDSCALE ? 4 : 2);
+}
+
+EditorPropertySideGroup::EditorPropertySideGroup() {
+	HBoxContainer *hb = memnew(HBoxContainer);
+	hb->set_h_size_flags(SIZE_EXPAND_FILL);
+
+	// Small indent so the first icon doesn't touch the left edge.
+	Control *spacer = memnew(Control);
+	spacer->set_custom_minimum_size(Size2(8 * EDSCALE, 0));
+	hb->add_child(spacer);
+
+	// GridContainer with 4 columns: [icon0][slider0][icon1][slider1] per row.
+	// That gives 2 pairs per row. _update_grid_columns() switches to 2 columns
+	// (1 pair per row) when the inspector panel is too narrow.
+	grid = memnew(GridContainer);
+	grid->set_columns(4);
+	grid->set_h_size_flags(SIZE_EXPAND_FILL);
+	grid->connect(SNAME("resized"), callable_mp(this, &EditorPropertySideGroup::_update_grid_columns));
+	hb->add_child(grid);
+
+	spin_sliders.resize(4);
+	spin_icons.resize(4);
+	EditorSpinSlider **spin = spin_sliders.ptrw();
+	TextureRect **icon = spin_icons.ptrw();
+	for (int i = 0; i < 4; i++) {
+		icon[i] = memnew(TextureRect);
+		icon[i]->set_stretch_mode(TextureRect::STRETCH_KEEP_CENTERED);
+		icon[i]->set_v_size_flags(SIZE_SHRINK_CENTER);
+		grid->add_child(icon[i]);
+
+		spin[i] = memnew(EditorSpinSlider);
+		spin[i]->set_flat(true);
+		spin[i]->set_h_size_flags(SIZE_EXPAND_FILL);
+		spin[i]->connect(SceneStringName(value_changed), callable_mp(this, &EditorPropertySideGroup::_value_changed).bind(i));
+		add_focusable(spin[i]);
+		grid->add_child(spin[i]);
+	}
+
+	linked = memnew(TextureButton);
+	linked->set_toggle_mode(true);
+	linked->set_stretch_mode(TextureButton::STRETCH_KEEP_CENTERED);
+	linked->set_tooltip_text(TTR("Lock/Unlock Link"));
+	linked->set_v_size_flags(SIZE_SHRINK_CENTER);
+	linked->connect(SceneStringName(toggled), callable_mp(this, &EditorPropertySideGroup::_store_link));
+	hb->add_child(linked);
+
+	set_bottom_editor(hb);
+	add_child(hb);
+}
+
+// StyleBoxPreview
 
 bool StyleBoxPreview::grid_preview_enabled = true;
 
@@ -130,6 +284,71 @@ void EditorInspectorPluginStyleBox::parse_begin(Object *p_object) {
 	StyleBoxPreview *preview = memnew(StyleBoxPreview);
 	preview->edit(sb);
 	add_custom_control(preview);
+}
+
+bool EditorInspectorPluginStyleBox::parse_property(Object *p_object, const Variant::Type p_type, const String &p_path, const PropertyHint p_hint, const String &p_hint_text, const BitField<PropertyUsageFlags> p_usage, const bool p_wide) {
+	// Group content_margin_* for all StyleBox types.
+	static const Vector<String> content_props = { "content_margin_left", "content_margin_top", "content_margin_right", "content_margin_bottom" };
+	static const Vector<String> side_icons = { "ControlAlignCenterLeft", "ControlAlignCenterTop", "ControlAlignCenterRight", "ControlAlignCenterBottom" };
+	static const Vector<String> side_labels = { "Left", "Top", "Right", "Bottom" };
+
+	if (p_path == "content_margin_left") {
+		EditorPropertySideGroup *ep = memnew(EditorPropertySideGroup);
+		ep->setup(content_props, side_icons, side_labels, false, -1.0, 2048.0, 1.0, false, false, "px");
+		add_property_editor_for_multiple_properties(TTR("Content Margins"), content_props, ep);
+		return true;
+	}
+	if (p_path == "content_margin_top" || p_path == "content_margin_right" || p_path == "content_margin_bottom") {
+		return true;
+	}
+
+	// StyleBoxFlat-specific groups.
+	if (!Object::cast_to<StyleBoxFlat>(p_object)) {
+		return false;
+	}
+
+	// Border Width group (int, order: left, top, right, bottom).
+	static const Vector<String> border_props = { "border_width_left", "border_width_top", "border_width_right", "border_width_bottom" };
+
+	if (p_path == "border_width_left") {
+		EditorPropertySideGroup *ep = memnew(EditorPropertySideGroup);
+		ep->setup(border_props, side_icons, side_labels, true, 0.0, 100.0, 1.0, true, false, "px");
+		add_property_editor_for_multiple_properties(TTR("Border Width"), border_props, ep);
+		return true;
+	}
+	if (p_path == "border_width_top" || p_path == "border_width_right" || p_path == "border_width_bottom") {
+		return true;
+	}
+
+	// Corner Radius group (int, order: top_left, top_right, bottom_right, bottom_left).
+	static const Vector<String> corner_props = { "corner_radius_top_left", "corner_radius_top_right", "corner_radius_bottom_right", "corner_radius_bottom_left" };
+	static const Vector<String> corner_icons = { "ControlAlignTopLeft", "ControlAlignTopRight", "ControlAlignBottomRight", "ControlAlignBottomLeft" };
+	static const Vector<String> corner_labels = { "Top Left", "Top Right", "Bottom Right", "Bottom Left" };
+
+	if (p_path == "corner_radius_top_left") {
+		EditorPropertySideGroup *ep = memnew(EditorPropertySideGroup);
+		ep->setup(corner_props, corner_icons, corner_labels, true, 0.0, 100.0, 1.0, true, false, "px");
+		add_property_editor_for_multiple_properties(TTR("Corner Radius"), corner_props, ep);
+		return true;
+	}
+	if (p_path == "corner_radius_top_right" || p_path == "corner_radius_bottom_right" || p_path == "corner_radius_bottom_left") {
+		return true;
+	}
+
+	// Expand Margins group (float, order: left, top, right, bottom).
+	static const Vector<String> expand_props = { "expand_margin_left", "expand_margin_top", "expand_margin_right", "expand_margin_bottom" };
+
+	if (p_path == "expand_margin_left") {
+		EditorPropertySideGroup *ep = memnew(EditorPropertySideGroup);
+		ep->setup(expand_props, side_icons, side_labels, false, 0.0, 100.0, 1.0, true, false, "px");
+		add_property_editor_for_multiple_properties(TTR("Expand Margins"), expand_props, ep);
+		return true;
+	}
+	if (p_path == "expand_margin_top" || p_path == "expand_margin_right" || p_path == "expand_margin_bottom") {
+		return true;
+	}
+
+	return false;
 }
 
 StyleBoxEditorPlugin::StyleBoxEditorPlugin() {
