@@ -340,6 +340,7 @@ private:
 	// Toolbar
 	HBoxContainer *toolbar = memnew(HBoxContainer);
 	Button *picker_button = nullptr;
+	Button *eraser_button = nullptr;
 
 	// Painting state.
 	enum DragType {
@@ -348,6 +349,7 @@ private:
 		DRAG_TYPE_PAINT_TERRAIN_SET_RECT,
 		DRAG_TYPE_PAINT_TERRAIN_BITS,
 		DRAG_TYPE_PAINT_TERRAIN_BITS_RECT,
+		DRAG_TYPE_ERASE_VARIANT,
 	};
 	DragType drag_type = DRAG_TYPE_NONE;
 	Vector2 drag_start_pos;
@@ -360,10 +362,13 @@ private:
 	DummyObject *dummy_object = memnew(DummyObject);
 	EditorPropertyEnum *terrain_set_property_editor = nullptr;
 	EditorPropertyEnum *terrain_property_editor = nullptr;
+	EditorPropertyEnum *terrain_variant_property_editor = nullptr;
+	bool updating_terrain_selector = false;
 
 	void _property_value_changed(const StringName &p_property, const Variant &p_value, const StringName &p_field);
 
 	void _update_terrain_selector();
+	void _update_terrain_selector_post(int p_terrain_set, int p_terrain, int p_variant);
 
 protected:
 	virtual void _tile_set_changed() override;

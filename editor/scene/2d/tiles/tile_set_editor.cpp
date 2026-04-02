@@ -492,6 +492,10 @@ void TileSetEditor::_move_tile_set_array_element(Object *p_undo_redo, Object *p_
 	} else if (components.size() >= 2 && components[0].begins_with("terrain_set_") && components[0].trim_prefix("terrain_set_").is_valid_int() && components[1] == "terrain_") {
 		int terrain_set = components[0].trim_prefix("terrain_set_").to_int();
 		end = ed_tile_set->get_terrains_count(terrain_set);
+	} else if (components.size() >= 3 && components[0].begins_with("terrain_set_") && components[0].trim_prefix("terrain_set_").is_valid_int() && components[1].begins_with("terrain_") && components[1].trim_prefix("terrain_").is_valid_int() && components[2] == "variant_") {
+		int terrain_set = components[0].trim_prefix("terrain_set_").to_int();
+		int terrain = components[1].trim_prefix("terrain_").to_int();
+		end = ed_tile_set->get_terrain_variants_count(terrain_set, terrain);
 	} else if (p_array_prefix == "navigation_layer_") {
 		end = ed_tile_set->get_navigation_layers_count();
 	} else if (p_array_prefix == "custom_data_layer_") {
@@ -534,6 +538,12 @@ void TileSetEditor::_move_tile_set_array_element(Object *p_undo_redo, Object *p_
 		int terrain_set = components[0].trim_prefix("terrain_set_").to_int();
 		if (p_from_index < 0) {
 			undo_redo_man->add_undo_method(ed_tile_set, "remove_terrain", terrain_set, p_to_pos < 0 ? ed_tile_set->get_terrains_count(terrain_set) : p_to_pos);
+		}
+	} else if (components.size() >= 3 && components[0].begins_with("terrain_set_") && components[0].trim_prefix("terrain_set_").is_valid_int() && components[1].begins_with("terrain_") && components[1].trim_prefix("terrain_").is_valid_int() && components[2] == "variant_") {
+		int terrain_set = components[0].trim_prefix("terrain_set_").to_int();
+		int terrain = components[1].trim_prefix("terrain_").to_int();
+		if (p_from_index < 0) {
+			undo_redo_man->add_undo_method(ed_tile_set, "remove_terrain_variant", terrain_set, terrain, p_to_pos < 0 ? ed_tile_set->get_terrain_variants_count(terrain_set, terrain) : p_to_pos);
 		}
 	} else if (p_array_prefix == "navigation_layer_") {
 		if (p_from_index < 0) {
@@ -667,6 +677,16 @@ void TileSetEditor::_move_tile_set_array_element(Object *p_undo_redo, Object *p_
 			undo_redo_man->add_do_method(ed_tile_set, "remove_terrain", terrain_set, p_from_index);
 		} else {
 			undo_redo_man->add_do_method(ed_tile_set, "move_terrain", terrain_set, p_from_index, p_to_pos);
+		}
+	} else if (components.size() >= 3 && components[0].begins_with("terrain_set_") && components[0].trim_prefix("terrain_set_").is_valid_int() && components[1].begins_with("terrain_") && components[1].trim_prefix("terrain_").is_valid_int() && components[2] == "variant_") {
+		int terrain_set = components[0].trim_prefix("terrain_set_").to_int();
+		int terrain = components[1].trim_prefix("terrain_").to_int();
+		if (p_from_index < 0) {
+			undo_redo_man->add_do_method(ed_tile_set, "add_terrain_variant", terrain_set, terrain, p_to_pos);
+		} else if (p_to_pos < 0) {
+			undo_redo_man->add_do_method(ed_tile_set, "remove_terrain_variant", terrain_set, terrain, p_from_index);
+		} else {
+			undo_redo_man->add_do_method(ed_tile_set, "move_terrain_variant", terrain_set, terrain, p_from_index, p_to_pos);
 		}
 	} else if (p_array_prefix == "navigation_layer_") {
 		if (p_from_index < 0) {

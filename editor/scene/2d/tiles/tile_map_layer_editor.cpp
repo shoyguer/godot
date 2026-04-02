@@ -2517,7 +2517,7 @@ Vector<TileMapLayerSubEditorPlugin::TabData> TileMapLayerEditorTerrainsPlugin::g
 	return tabs;
 }
 
-HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_path_or_connect(const Vector<Vector2i> &p_to_paint, int p_terrain_set, int p_terrain, bool p_connect) const {
+HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_path_or_connect(const Vector<Vector2i> &p_to_paint, int p_terrain_set, int p_terrain, bool p_connect, int p_variant) const {
 	TileMapLayer *edited_layer = _get_edited_layer();
 	if (!edited_layer) {
 		return HashMap<Vector2i, TileMapCell>();
@@ -2528,6 +2528,9 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 		return HashMap<Vector2i, TileMapCell>();
 	}
 
+	// Use the universal pattern set (variant=-1) for pattern computation so that
+	// neighbor cells keep their existing patterns. The variant only controls which
+	// actual tile image is placed for the painted cells.
 	HashMap<Vector2i, TileSet::TerrainsPattern> terrain_fill_output;
 	if (p_connect) {
 		terrain_fill_output = edited_layer->terrain_fill_connect(p_to_paint, p_terrain_set, p_terrain, false);
@@ -2545,31 +2548,34 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 	for (const KeyValue<Vector2i, TileSet::TerrainsPattern> &kv : terrain_fill_output) {
 		if (painted_set.has(kv.key)) {
 			// Paint a random tile with the correct terrain for the painted path.
-			_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value));
+			// Use the selected variant so the tile comes from the variant's pool.
+			_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, p_variant));
 		} else {
-			// Avoids updating the painted path from the output if the new pattern is the same as before.
+			// Neighbor cell: check if its pattern actually changed.
 			TileSet::TerrainsPattern in_map_terrain_pattern = TileSet::TerrainsPattern(*tile_set, p_terrain_set);
+			int neighbor_variant = -1;
 			TileMapCell cell = edited_layer->get_cell(kv.key);
 			if (cell.source_id != TileSet::INVALID_SOURCE) {
 				TileSetSource *source = *tile_set->get_source(cell.source_id);
 				TileSetAtlasSource *atlas_source = Object::cast_to<TileSetAtlasSource>(source);
 				if (atlas_source) {
-					// Get tile data.
 					TileData *tile_data = atlas_source->get_tile_data(cell.get_atlas_coords(), cell.alternative_tile);
 					if (tile_data && tile_data->get_terrain_set() == p_terrain_set) {
 						in_map_terrain_pattern = tile_data->get_terrains_pattern();
+						neighbor_variant = tile_data->get_terrain_variant();
 					}
 				}
 			}
 			if (in_map_terrain_pattern != kv.value) {
-				_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value));
+				// Neighbor needs updating — preserve its existing variant.
+				_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, neighbor_variant));
 			}
 		}
 	}
 	return output;
 }
 
-HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_pattern(const Vector<Vector2i> &p_to_paint, int p_terrain_set, TileSet::TerrainsPattern p_terrains_pattern) const {
+HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_pattern(const Vector<Vector2i> &p_to_paint, int p_terrain_set, TileSet::TerrainsPattern p_terrains_pattern, int p_variant) const {
 	TileMapLayer *edited_layer = _get_edited_layer();
 	if (!edited_layer) {
 		return HashMap<Vector2i, TileMapCell>();
@@ -2580,6 +2586,7 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 		return HashMap<Vector2i, TileMapCell>();
 	}
 
+	// Use universal pattern set for pattern computation (same reasoning as _draw_terrain_path_or_connect).
 	HashMap<Vector2i, TileSet::TerrainsPattern> terrain_fill_output = edited_layer->terrain_fill_pattern(p_to_paint, p_terrain_set, p_terrains_pattern, false);
 
 	// Make the painted path a set for faster lookups
@@ -2591,25 +2598,27 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 	HashMap<Vector2i, TileMapCell> output;
 	for (const KeyValue<Vector2i, TileSet::TerrainsPattern> &kv : terrain_fill_output) {
 		if (painted_set.has(kv.key)) {
-			// Paint a random tile with the correct terrain for the painted path.
-			_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value));
+			// Paint a random tile with the correct terrain for the painted path (use variant).
+			_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, p_variant));
 		} else {
-			// Avoids updating the painted path from the output if the new pattern is the same as before.
+			// Neighbor cell: check if its pattern actually changed.
 			TileSet::TerrainsPattern in_map_terrain_pattern = TileSet::TerrainsPattern(*tile_set, p_terrain_set);
+			int neighbor_variant = -1;
 			TileMapCell cell = edited_layer->get_cell(kv.key);
 			if (cell.source_id != TileSet::INVALID_SOURCE) {
 				TileSetSource *source = *tile_set->get_source(cell.source_id);
 				TileSetAtlasSource *atlas_source = Object::cast_to<TileSetAtlasSource>(source);
 				if (atlas_source) {
-					// Get tile data.
 					TileData *tile_data = atlas_source->get_tile_data(cell.get_atlas_coords(), cell.alternative_tile);
 					if (tile_data && tile_data->get_terrain_set() == p_terrain_set) {
 						in_map_terrain_pattern = tile_data->get_terrains_pattern();
+						neighbor_variant = tile_data->get_terrain_variant();
 					}
 				}
 			}
 			if (in_map_terrain_pattern != kv.value) {
-				_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value));
+				// Neighbor needs updating — preserve its existing variant.
+				_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, neighbor_variant));
 			}
 		}
 	}
@@ -2628,14 +2637,14 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_line(Vect
 	}
 
 	if (p_erase) {
-		return _draw_terrain_pattern(TileMapLayerEditor::get_line(edited_layer, p_start_cell, p_end_cell), selected_terrain_set, TileSet::TerrainsPattern(*tile_set, selected_terrain_set));
+		return _draw_terrain_pattern(TileMapLayerEditor::get_line(edited_layer, p_start_cell, p_end_cell), selected_terrain_set, TileSet::TerrainsPattern(*tile_set, selected_terrain_set), selected_variant);
 	} else {
 		if (selected_type == SELECTED_TYPE_CONNECT) {
-			return _draw_terrain_path_or_connect(TileMapLayerEditor::get_line(edited_layer, p_start_cell, p_end_cell), selected_terrain_set, selected_terrain, true);
+			return _draw_terrain_path_or_connect(TileMapLayerEditor::get_line(edited_layer, p_start_cell, p_end_cell), selected_terrain_set, selected_terrain, true, selected_variant);
 		} else if (selected_type == SELECTED_TYPE_PATH) {
-			return _draw_terrain_path_or_connect(TileMapLayerEditor::get_line(edited_layer, p_start_cell, p_end_cell), selected_terrain_set, selected_terrain, false);
+			return _draw_terrain_path_or_connect(TileMapLayerEditor::get_line(edited_layer, p_start_cell, p_end_cell), selected_terrain_set, selected_terrain, false, selected_variant);
 		} else { // SELECTED_TYPE_PATTERN
-			return _draw_terrain_pattern(TileMapLayerEditor::get_line(edited_layer, p_start_cell, p_end_cell), selected_terrain_set, selected_terrains_pattern);
+			return _draw_terrain_pattern(TileMapLayerEditor::get_line(edited_layer, p_start_cell, p_end_cell), selected_terrain_set, selected_terrains_pattern, selected_variant);
 		}
 	}
 }
@@ -2664,12 +2673,12 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_rect(Vect
 	}
 
 	if (p_erase) {
-		return _draw_terrain_pattern(to_draw, selected_terrain_set, TileSet::TerrainsPattern(*tile_set, selected_terrain_set));
+		return _draw_terrain_pattern(to_draw, selected_terrain_set, TileSet::TerrainsPattern(*tile_set, selected_terrain_set), selected_variant);
 	} else {
 		if (selected_type == SELECTED_TYPE_CONNECT || selected_type == SELECTED_TYPE_PATH) {
-			return _draw_terrain_path_or_connect(to_draw, selected_terrain_set, selected_terrain, true);
+			return _draw_terrain_path_or_connect(to_draw, selected_terrain_set, selected_terrain, true, selected_variant);
 		} else { // SELECTED_TYPE_PATTERN
-			return _draw_terrain_pattern(to_draw, selected_terrain_set, selected_terrains_pattern);
+			return _draw_terrain_pattern(to_draw, selected_terrain_set, selected_terrains_pattern, selected_variant);
 		}
 	}
 }
@@ -2803,12 +2812,12 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_bucket_fi
 	}
 
 	if (p_erase) {
-		return _draw_terrain_pattern(cells_to_draw_as_vector, selected_terrain_set, TileSet::TerrainsPattern(*tile_set, selected_terrain_set));
+		return _draw_terrain_pattern(cells_to_draw_as_vector, selected_terrain_set, TileSet::TerrainsPattern(*tile_set, selected_terrain_set), selected_variant);
 	} else {
 		if (selected_type == SELECTED_TYPE_CONNECT || selected_type == SELECTED_TYPE_PATH) {
-			return _draw_terrain_path_or_connect(cells_to_draw_as_vector, selected_terrain_set, selected_terrain, true);
+			return _draw_terrain_path_or_connect(cells_to_draw_as_vector, selected_terrain_set, selected_terrain, true, selected_variant);
 		} else { // SELECTED_TYPE_PATTERN
-			return _draw_terrain_pattern(cells_to_draw_as_vector, selected_terrain_set, selected_terrains_pattern);
+			return _draw_terrain_pattern(cells_to_draw_as_vector, selected_terrain_set, selected_terrains_pattern, selected_variant);
 		}
 	}
 }
@@ -2961,6 +2970,7 @@ void TileMapLayerEditorTerrainsPlugin::_update_selection() {
 	// Get the selected terrain.
 	selected_terrain_set = -1;
 	selected_terrains_pattern = TileSet::TerrainsPattern();
+	selected_variant = -1;
 
 	TreeItem *selected_tree_item = terrains_tree->get_selected();
 	if (selected_tree_item && selected_tree_item->get_metadata(0)) {
@@ -2968,6 +2978,9 @@ void TileMapLayerEditorTerrainsPlugin::_update_selection() {
 		// Selected terrain
 		selected_terrain_set = metadata_dict["terrain_set"];
 		selected_terrain = metadata_dict["terrain_id"];
+		if (metadata_dict.has("variant_id")) {
+			selected_variant = metadata_dict["variant_id"];
+		}
 
 		// Selected mode/terrain pattern
 		if (erase_button->is_pressed()) {
@@ -3144,6 +3157,62 @@ void TileMapLayerEditorTerrainsPlugin::forward_canvas_draw_over_viewport(Control
 	Vector2 mpos = edited_layer->get_local_mouse_position();
 	Vector2i tile_shape_size = tile_set->get_tile_size();
 	bool drawing_rect = false;
+
+	// Dim cells whose variant doesn't match the selected variant.
+	// Also dim when untagged is selected and variant tiles exist (so the user can
+	// distinguish untagged from variant-assigned tiles on the map).
+	bool has_variants = selected_terrain_set >= 0 && selected_terrain >= 0 &&
+			tile_set->get_terrain_variants_count(selected_terrain_set, selected_terrain) > 0;
+	if (selected_terrain_set >= 0 && (selected_variant >= 0 || has_variants)) {
+		Transform2D xform_inv = xform.affine_inverse();
+		Size2 screen_size = p_overlay->get_size();
+		Rect2i screen_rect;
+		screen_rect.position = tile_set->local_to_map(xform_inv.xform(Vector2()));
+		screen_rect.expand_to(tile_set->local_to_map(xform_inv.xform(Vector2(0, screen_size.height))));
+		screen_rect.expand_to(tile_set->local_to_map(xform_inv.xform(Vector2(screen_size.width, 0))));
+		screen_rect.expand_to(tile_set->local_to_map(xform_inv.xform(screen_size)));
+		screen_rect = screen_rect.grow(1);
+
+		Rect2i used_rect = edited_layer->get_used_rect();
+		Rect2i check_rect = used_rect.intersection(screen_rect);
+
+		// Cap to avoid perf issues on huge maps.
+		int max_dim = 100;
+		if (check_rect.size.x > max_dim) {
+			check_rect = check_rect.grow_individual(-(check_rect.size.x - max_dim) / 2, 0, -(check_rect.size.x - max_dim) / 2, 0);
+		}
+		if (check_rect.size.y > max_dim) {
+			check_rect = check_rect.grow_individual(0, -(check_rect.size.y - max_dim) / 2, 0, -(check_rect.size.y - max_dim) / 2);
+		}
+
+		for (int x = check_rect.position.x; x < check_rect.position.x + check_rect.size.x; x++) {
+			for (int y = check_rect.position.y; y < check_rect.position.y + check_rect.size.y; y++) {
+				Vector2i coords(x, y);
+				int source_id = edited_layer->get_cell_source_id(coords);
+				if (source_id == TileSet::INVALID_SOURCE) {
+					continue;
+				}
+				Ref<TileSetSource> source = tile_set->get_source(source_id);
+				Ref<TileSetAtlasSource> atlas_source = source;
+				if (atlas_source.is_null()) {
+					continue;
+				}
+				Vector2i atlas_coords = edited_layer->get_cell_atlas_coords(coords);
+				int alt = edited_layer->get_cell_alternative_tile(coords);
+				if (!atlas_source->has_tile(atlas_coords) || !atlas_source->has_alternative_tile(atlas_coords, alt)) {
+					continue;
+				}
+				TileData *tile_data = atlas_source->get_tile_data(atlas_coords, alt);
+				if (tile_data && tile_data->get_terrain_set() == selected_terrain_set && !tile_data->has_terrain_variant(selected_variant) && !tile_data->get_terrain_variants().is_empty()) {
+					// Dim tiles with wrong variant. Untagged tiles (empty variants) are shared and never dimmed.
+					Transform2D tile_xform;
+					tile_xform.set_origin(tile_set->map_to_local(coords));
+					tile_xform.set_scale(tile_shape_size);
+					tile_set->draw_tile_shape(p_overlay, xform * tile_xform, Color(0.0, 0.0, 0.0, 0.3), true);
+				}
+			}
+		}
+	}
 
 	// Handle the preview of the tiles to be placed.
 	if (main_box_container->is_visible_in_tree() && has_mouse) { // Only if the tilemap editor is opened and the viewport is hovered.
@@ -3337,6 +3406,7 @@ void TileMapLayerEditorTerrainsPlugin::_update_terrains_tree() {
 
 	// Fill in the terrain list.
 	Vector<Vector<Ref<Texture2D>>> icons = tile_set->generate_terrains_icons(Size2(16, 16) * EDSCALE);
+	Vector<Vector<Vector<Ref<Texture2D>>>> variant_icons = tile_set->generate_terrains_icons_with_variants(Size2(16, 16) * EDSCALE);
 	for (int terrain_set_index = 0; terrain_set_index < tile_set->get_terrain_sets_count(); terrain_set_index++) {
 		// Add an item for the terrain set.
 		TreeItem *terrain_set_tree_item = terrains_tree->create_item();
@@ -3361,10 +3431,46 @@ void TileMapLayerEditorTerrainsPlugin::_update_terrains_tree() {
 			terrain_tree_item->set_icon_max_width(0, 32 * EDSCALE);
 			terrain_tree_item->set_icon(0, icons[terrain_set_index][terrain_index]);
 
-			Dictionary metadata_dict;
-			metadata_dict["terrain_set"] = terrain_set_index;
-			metadata_dict["terrain_id"] = terrain_index;
-			terrain_tree_item->set_metadata(0, metadata_dict);
+			int variant_count = tile_set->get_terrain_variants_count(terrain_set_index, terrain_index);
+			if (variant_count > 0) {
+				// When variants exist, the terrain item itself becomes unselectable;
+				// the user selects a specific variant (or "Untagged") child instead.
+				terrain_tree_item->set_selectable(0, false);
+
+				// "Untagged" child — variant_id = -1, uses slot 0 of variant_icons.
+				TreeItem *untagged_item = terrains_tree->create_item(terrain_tree_item);
+				untagged_item->set_text(0, TTR("Untagged"));
+				untagged_item->set_icon_max_width(0, 32 * EDSCALE);
+				if (variant_icons[terrain_set_index][terrain_index].size() > 0) {
+					untagged_item->set_icon(0, variant_icons[terrain_set_index][terrain_index][0]);
+				}
+				Dictionary untagged_meta;
+				untagged_meta["terrain_set"] = terrain_set_index;
+				untagged_meta["terrain_id"] = terrain_index;
+				untagged_meta["variant_id"] = -1;
+				untagged_item->set_metadata(0, untagged_meta);
+
+				for (int v = 0; v < variant_count; v++) {
+					TreeItem *variant_item = terrains_tree->create_item(terrain_tree_item);
+					String vname = tile_set->get_terrain_variant_name(terrain_set_index, terrain_index, v);
+					variant_item->set_text(0, vname.is_empty() ? vformat(TTR("Variant %d"), v) : vname);
+					variant_item->set_icon_max_width(0, 32 * EDSCALE);
+					int icon_slot = v + 1; // slot 0 = untagged, slot N+1 = variant N
+					if (icon_slot < variant_icons[terrain_set_index][terrain_index].size()) {
+						variant_item->set_icon(0, variant_icons[terrain_set_index][terrain_index][icon_slot]);
+					}
+					Dictionary variant_meta;
+					variant_meta["terrain_set"] = terrain_set_index;
+					variant_meta["terrain_id"] = terrain_index;
+					variant_meta["variant_id"] = v;
+					variant_item->set_metadata(0, variant_meta);
+				}
+			} else {
+				Dictionary metadata_dict;
+				metadata_dict["terrain_set"] = terrain_set_index;
+				metadata_dict["terrain_id"] = terrain_index;
+				terrain_tree_item->set_metadata(0, metadata_dict);
+			}
 		}
 	}
 }
@@ -3387,6 +3493,7 @@ void TileMapLayerEditorTerrainsPlugin::_update_tiles_list() {
 		Dictionary metadata_dict = selected_tree_item->get_metadata(0);
 		int sel_terrain_set = metadata_dict["terrain_set"];
 		int sel_terrain_id = metadata_dict["terrain_id"];
+		int sel_variant = metadata_dict.has("variant_id") ? (int)metadata_dict["variant_id"] : -1;
 		ERR_FAIL_INDEX(sel_terrain_set, tile_set->get_terrain_sets_count());
 		ERR_FAIL_INDEX(sel_terrain_id, tile_set->get_terrains_count(sel_terrain_set));
 
@@ -3429,7 +3536,7 @@ void TileMapLayerEditorTerrainsPlugin::_update_tiles_list() {
 				bool transpose = false;
 
 				double max_probability = -1.0;
-				for (const TileMapCell &cell : tile_set->get_tiles_for_terrains_pattern(sel_terrain_set, terrains_pattern)) {
+				for (const TileMapCell &cell : tile_set->get_tiles_for_terrains_pattern(sel_terrain_set, terrains_pattern, sel_variant)) {
 					Ref<TileSetSource> source = tile_set->get_source(cell.source_id);
 
 					Ref<TileSetAtlasSource> atlas_source = source;

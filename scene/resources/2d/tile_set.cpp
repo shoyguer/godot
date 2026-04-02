@@ -405,10 +405,10 @@ int TileSet::get_next_source_id() const {
 
 void TileSet::_update_terrains_cache() {
 	if (terrains_cache_dirty) {
-		// Organizes tiles into structures.
+		// Organizes tiles into structures, bucketed by variant.
 		per_terrain_pattern_tiles.resize(terrain_sets.size());
-		for (RBMap<TileSet::TerrainsPattern, RBSet<TileMapCell>> &tiles : per_terrain_pattern_tiles) {
-			tiles.clear();
+		for (HashMap<int, RBMap<TileSet::TerrainsPattern, RBSet<TileMapCell>>> &variant_map : per_terrain_pattern_tiles) {
+			variant_map.clear();
 		}
 
 		for (const KeyValue<int, Ref<TileSetSource>> &kv : sources) {
@@ -430,10 +430,13 @@ void TileSet::_update_terrains_cache() {
 							cell.alternative_tile = alternative_id;
 
 							TileSet::TerrainsPattern terrains_pattern = tile_data->get_terrains_pattern();
+							PackedInt32Array variants = tile_data->get_terrain_variants();
+
+							bool dominated = false;
 
 							// Main terrain.
 							if (terrains_pattern.get_terrain() >= 0) {
-								per_terrain_pattern_tiles[terrain_set][terrains_pattern].insert(cell);
+								dominated = true;
 							}
 
 							// Terrain bits.
@@ -442,7 +445,19 @@ void TileSet::_update_terrains_cache() {
 								if (is_valid_terrain_peering_bit(terrain_set, bit)) {
 									int terrain = terrains_pattern.get_terrain_peering_bit(bit);
 									if (terrain >= 0) {
-										per_terrain_pattern_tiles[terrain_set][terrains_pattern].insert(cell);
+										dominated = true;
+									}
+								}
+							}
+
+							if (dominated) {
+								if (variants.is_empty()) {
+									// Untagged: insert into the -1 bucket.
+									per_terrain_pattern_tiles[terrain_set][-1][terrains_pattern].insert(cell);
+								} else {
+									// Multi-variant: insert into each variant's bucket.
+									for (int vi = 0; vi < variants.size(); vi++) {
+										per_terrain_pattern_tiles[terrain_set][variants[vi]][terrains_pattern].insert(cell);
 									}
 								}
 							}
@@ -452,7 +467,7 @@ void TileSet::_update_terrains_cache() {
 			}
 		}
 
-		// Add the empty cell in the possible patterns and cells.
+		// Add the empty cell in the possible patterns and cells (in all variant buckets).
 		for (int i = 0; i < terrain_sets.size(); i++) {
 			TileSet::TerrainsPattern empty_pattern(this, i);
 
@@ -460,7 +475,16 @@ void TileSet::_update_terrains_cache() {
 			empty_cell.source_id = TileSet::INVALID_SOURCE;
 			empty_cell.set_atlas_coords(TileSetSource::INVALID_ATLAS_COORDS);
 			empty_cell.alternative_tile = TileSetSource::INVALID_TILE_ALTERNATIVE;
-			per_terrain_pattern_tiles[i][empty_pattern].insert(empty_cell);
+
+			// Always add to untagged bucket.
+			per_terrain_pattern_tiles[i][-1][empty_pattern].insert(empty_cell);
+
+			// Also add to every variant bucket that already has tiles.
+			for (KeyValue<int, RBMap<TileSet::TerrainsPattern, RBSet<TileMapCell>>> &kv : per_terrain_pattern_tiles[i]) {
+				if (kv.key >= 0) {
+					kv.value[empty_pattern].insert(empty_cell);
+				}
+			}
 		}
 		terrains_cache_dirty = false;
 	}
@@ -891,6 +915,80 @@ Color TileSet::get_terrain_color(int p_terrain_set, int p_terrain_index) const {
 	ERR_FAIL_INDEX_V(p_terrain_set, terrain_sets.size(), Color());
 	ERR_FAIL_INDEX_V(p_terrain_index, terrain_sets[p_terrain_set].terrains.size(), Color());
 	return terrain_sets[p_terrain_set].terrains[p_terrain_index].color;
+}
+
+int TileSet::get_terrain_variants_count(int p_terrain_set, int p_terrain_index) const {
+	ERR_FAIL_INDEX_V(p_terrain_set, terrain_sets.size(), 0);
+	ERR_FAIL_INDEX_V(p_terrain_index, terrain_sets[p_terrain_set].terrains.size(), 0);
+	return terrain_sets[p_terrain_set].terrains[p_terrain_index].variants.size();
+}
+
+void TileSet::add_terrain_variant(int p_terrain_set, int p_terrain_index, int p_to_pos) {
+	ERR_FAIL_INDEX(p_terrain_set, terrain_sets.size());
+	ERR_FAIL_INDEX(p_terrain_index, terrain_sets[p_terrain_set].terrains.size());
+	Vector<String> &variants = terrain_sets.write[p_terrain_set].terrains.write[p_terrain_index].variants;
+	if (p_to_pos < 0) {
+		p_to_pos = variants.size();
+	}
+	ERR_FAIL_INDEX(p_to_pos, variants.size() + 1);
+	variants.insert(p_to_pos, String(vformat("Variant %d", p_to_pos)));
+
+	notify_property_list_changed();
+	terrains_cache_dirty = true;
+	emit_changed();
+}
+
+void TileSet::move_terrain_variant(int p_terrain_set, int p_terrain_index, int p_from_index, int p_to_pos) {
+	ERR_FAIL_INDEX(p_terrain_set, terrain_sets.size());
+	ERR_FAIL_INDEX(p_terrain_index, terrain_sets[p_terrain_set].terrains.size());
+	Vector<String> &variants = terrain_sets.write[p_terrain_set].terrains.write[p_terrain_index].variants;
+
+	ERR_FAIL_INDEX(p_from_index, variants.size());
+	ERR_FAIL_INDEX(p_to_pos, variants.size() + 1);
+	variants.insert(p_to_pos, variants[p_from_index]);
+	variants.remove_at(p_to_pos < p_from_index ? p_from_index + 1 : p_from_index);
+
+	// Update TileData variant indices for all sources.
+	for (KeyValue<int, Ref<TileSetSource>> source : sources) {
+		source.value->move_terrain_variant(p_terrain_set, p_terrain_index, p_from_index, p_to_pos);
+	}
+
+	notify_property_list_changed();
+	terrains_cache_dirty = true;
+	emit_changed();
+}
+
+void TileSet::remove_terrain_variant(int p_terrain_set, int p_terrain_index, int p_index) {
+	ERR_FAIL_INDEX(p_terrain_set, terrain_sets.size());
+	ERR_FAIL_INDEX(p_terrain_index, terrain_sets[p_terrain_set].terrains.size());
+	Vector<String> &variants = terrain_sets.write[p_terrain_set].terrains.write[p_terrain_index].variants;
+
+	ERR_FAIL_INDEX(p_index, variants.size());
+	variants.remove_at(p_index);
+
+	// Update TileData variant indices for all sources.
+	for (KeyValue<int, Ref<TileSetSource>> source : sources) {
+		source.value->remove_terrain_variant(p_terrain_set, p_terrain_index, p_index);
+	}
+
+	notify_property_list_changed();
+	terrains_cache_dirty = true;
+	emit_changed();
+}
+
+void TileSet::set_terrain_variant_name(int p_terrain_set, int p_terrain_index, int p_variant_index, String p_name) {
+	ERR_FAIL_INDEX(p_terrain_set, terrain_sets.size());
+	ERR_FAIL_INDEX(p_terrain_index, terrain_sets[p_terrain_set].terrains.size());
+	ERR_FAIL_INDEX(p_variant_index, terrain_sets[p_terrain_set].terrains[p_terrain_index].variants.size());
+	terrain_sets.write[p_terrain_set].terrains.write[p_terrain_index].variants.write[p_variant_index] = p_name;
+	emit_changed();
+}
+
+String TileSet::get_terrain_variant_name(int p_terrain_set, int p_terrain_index, int p_variant_index) const {
+	ERR_FAIL_INDEX_V(p_terrain_set, terrain_sets.size(), String());
+	ERR_FAIL_INDEX_V(p_terrain_index, terrain_sets[p_terrain_set].terrains.size(), String());
+	ERR_FAIL_INDEX_V(p_variant_index, terrain_sets[p_terrain_set].terrains[p_terrain_index].variants.size(), String());
+	return terrain_sets[p_terrain_set].terrains[p_terrain_index].variants[p_variant_index];
 }
 
 bool TileSet::is_valid_terrain_peering_bit_for_mode(TileSet::TerrainMode p_terrain_mode, TileSet::CellNeighbor p_peering_bit) const {
@@ -1401,30 +1499,78 @@ int TileSet::get_patterns_count() {
 	return patterns.size();
 }
 
-RBSet<TileSet::TerrainsPattern> TileSet::get_terrains_pattern_set(int p_terrain_set) {
+RBSet<TileSet::TerrainsPattern> TileSet::get_terrains_pattern_set(int p_terrain_set, int p_variant) {
 	ERR_FAIL_INDEX_V(p_terrain_set, terrain_sets.size(), RBSet<TileSet::TerrainsPattern>());
 	_update_terrains_cache();
 
 	RBSet<TileSet::TerrainsPattern> output;
-	for (KeyValue<TileSet::TerrainsPattern, RBSet<TileMapCell>> kv : per_terrain_pattern_tiles[p_terrain_set]) {
-		output.insert(kv.key);
+	// Always include the requested variant bucket.
+	if (per_terrain_pattern_tiles[p_terrain_set].has(p_variant)) {
+		for (const KeyValue<TileSet::TerrainsPattern, RBSet<TileMapCell>> &kv : per_terrain_pattern_tiles[p_terrain_set][p_variant]) {
+			output.insert(kv.key);
+		}
+	}
+	// When a specific variant is selected (>= 0), also include untagged (-1) tiles.
+	if (p_variant >= 0 && per_terrain_pattern_tiles[p_terrain_set].has(-1)) {
+		for (const KeyValue<TileSet::TerrainsPattern, RBSet<TileMapCell>> &kv : per_terrain_pattern_tiles[p_terrain_set][-1]) {
+			output.insert(kv.key);
+		}
 	}
 	return output;
 }
 
-RBSet<TileMapCell> TileSet::get_tiles_for_terrains_pattern(int p_terrain_set, TerrainsPattern p_terrain_tile_pattern) {
-	ERR_FAIL_INDEX_V(p_terrain_set, terrain_sets.size(), RBSet<TileMapCell>());
+RBSet<TileSet::TerrainsPattern> TileSet::get_terrains_pattern_set_combined(int p_terrain_set) {
+	ERR_FAIL_INDEX_V(p_terrain_set, terrain_sets.size(), RBSet<TileSet::TerrainsPattern>());
 	_update_terrains_cache();
-	return RBSet<TileMapCell>(per_terrain_pattern_tiles[p_terrain_set][p_terrain_tile_pattern]);
+
+	RBSet<TileSet::TerrainsPattern> output;
+	for (const KeyValue<int, RBMap<TileSet::TerrainsPattern, RBSet<TileMapCell>>> &variant_kv : per_terrain_pattern_tiles[p_terrain_set]) {
+		for (const KeyValue<TileSet::TerrainsPattern, RBSet<TileMapCell>> &kv : variant_kv.value) {
+			output.insert(kv.key);
+		}
+	}
+	return output;
 }
 
-TileMapCell TileSet::get_random_tile_from_terrains_pattern(int p_terrain_set, TileSet::TerrainsPattern p_terrain_tile_pattern) {
+RBSet<TileMapCell> TileSet::get_tiles_for_terrains_pattern(int p_terrain_set, TerrainsPattern p_terrain_tile_pattern, int p_variant) {
+	ERR_FAIL_INDEX_V(p_terrain_set, terrain_sets.size(), RBSet<TileMapCell>());
+	_update_terrains_cache();
+	RBSet<TileMapCell> output;
+	// Include tiles from the requested variant bucket.
+	if (per_terrain_pattern_tiles[p_terrain_set].has(p_variant) && per_terrain_pattern_tiles[p_terrain_set][p_variant].has(p_terrain_tile_pattern)) {
+		for (const TileMapCell &cell : per_terrain_pattern_tiles[p_terrain_set][p_variant][p_terrain_tile_pattern]) {
+			output.insert(cell);
+		}
+	}
+	// When a specific variant is selected (>= 0), also include untagged (-1) tiles.
+	if (p_variant >= 0 && per_terrain_pattern_tiles[p_terrain_set].has(-1) && per_terrain_pattern_tiles[p_terrain_set][-1].has(p_terrain_tile_pattern)) {
+		for (const TileMapCell &cell : per_terrain_pattern_tiles[p_terrain_set][-1][p_terrain_tile_pattern]) {
+			output.insert(cell);
+		}
+	}
+	return output;
+}
+
+TileMapCell TileSet::get_random_tile_from_terrains_pattern(int p_terrain_set, TileSet::TerrainsPattern p_terrain_tile_pattern, int p_variant) {
 	ERR_FAIL_INDEX_V(p_terrain_set, terrain_sets.size(), TileMapCell());
 	_update_terrains_cache();
 
+	// Build the combined tile set: variant bucket + untagged (when variant >= 0).
+	RBSet<TileMapCell> set;
+	if (per_terrain_pattern_tiles[p_terrain_set].has(p_variant) && per_terrain_pattern_tiles[p_terrain_set][p_variant].has(p_terrain_tile_pattern)) {
+		set = per_terrain_pattern_tiles[p_terrain_set][p_variant][p_terrain_tile_pattern];
+	}
+	if (p_variant >= 0 && per_terrain_pattern_tiles[p_terrain_set].has(-1) && per_terrain_pattern_tiles[p_terrain_set][-1].has(p_terrain_tile_pattern)) {
+		for (const TileMapCell &cell : per_terrain_pattern_tiles[p_terrain_set][-1][p_terrain_tile_pattern]) {
+			set.insert(cell);
+		}
+	}
+	if (set.is_empty()) {
+		return TileMapCell();
+	}
+
 	// Count the sum of probabilities.
 	double sum = 0.0;
-	RBSet<TileMapCell> set(per_terrain_pattern_tiles[p_terrain_set][p_terrain_tile_pattern]);
 	for (const TileMapCell &E : set) {
 		if (E.source_id >= 0) {
 			Ref<TileSetSource> source = sources[E.source_id];
@@ -2553,6 +2699,133 @@ Vector<Vector<Ref<Texture2D>>> TileSet::generate_terrains_icons(Size2i p_size) {
 			Ref<ImageTexture> icon = ImageTexture::create_from_image(dst_image);
 			icon->set_size_override(p_size);
 			output.write[terrain_set].write[terrain] = icon;
+		}
+	}
+	return output;
+}
+
+Vector<Vector<Vector<Ref<Texture2D>>>> TileSet::generate_terrains_icons_with_variants(Size2i p_size) {
+	// Returns [terrain_set][terrain][variant_slot] where variant_slot 0 = untagged, 1..N = variant 0..N-1.
+	struct Count {
+		int count = 0;
+		float probability = 0.0;
+		Ref<Texture2D> texture;
+		Rect2i region;
+	};
+
+	Vector<Vector<Vector<Ref<Texture2D>>>> output;
+	// counts[terrain_set][terrain][variant_slot]
+	LocalVector<LocalVector<LocalVector<Count>>> counts;
+	output.resize(get_terrain_sets_count());
+	counts.resize(get_terrain_sets_count());
+	for (int terrain_set = 0; terrain_set < get_terrain_sets_count(); terrain_set++) {
+		output.write[terrain_set].resize(get_terrains_count(terrain_set));
+		counts[terrain_set].resize(get_terrains_count(terrain_set));
+		for (int terrain = 0; terrain < get_terrains_count(terrain_set); terrain++) {
+			int variant_count = get_terrain_variants_count(terrain_set, terrain);
+			int slots = variant_count + 1; // slot 0 = untagged, slot 1..N = variant 0..N-1
+			output.write[terrain_set].write[terrain].resize(slots);
+			counts[terrain_set][terrain].resize(slots);
+		}
+	}
+
+	for (int source_index = 0; source_index < get_source_count(); source_index++) {
+		int source_id = get_source_id(source_index);
+		Ref<TileSetSource> source = get_source(source_id);
+
+		Ref<TileSetAtlasSource> atlas_source = source;
+		if (atlas_source.is_valid()) {
+			for (int tile_index = 0; tile_index < source->get_tiles_count(); tile_index++) {
+				Vector2i tile_id = source->get_tile_id(tile_index);
+				for (int alternative_index = 0; alternative_index < source->get_alternative_tiles_count(tile_id); alternative_index++) {
+					int alternative_id = source->get_alternative_tile_id(tile_id, alternative_index);
+
+					TileData *tile_data = atlas_source->get_tile_data(tile_id, alternative_id);
+					int terrain_set = tile_data->get_terrain_set();
+					if (terrain_set >= 0) {
+						ERR_FAIL_INDEX_V(terrain_set, get_terrain_sets_count(), Vector<Vector<Vector<Ref<Texture2D>>>>());
+
+						PackedInt32Array tile_variants = tile_data->get_terrain_variants();
+						// Build the list of variant slots this tile contributes to.
+						LocalVector<int> variant_slots;
+						if (tile_variants.is_empty()) {
+							variant_slots.push_back(0); // Untagged = slot 0.
+						} else {
+							for (int vi = 0; vi < tile_variants.size(); vi++) {
+								variant_slots.push_back(tile_variants[vi] + 1);
+							}
+						}
+
+						LocalVector<int> bit_counts;
+						bit_counts.resize(get_terrains_count(terrain_set));
+						for (int terrain = 0; terrain < get_terrains_count(terrain_set); terrain++) {
+							bit_counts[terrain] = 0;
+						}
+						if (tile_data->get_terrain() >= 0) {
+							bit_counts[tile_data->get_terrain()] += 10;
+						}
+						for (int terrain_bit = 0; terrain_bit < TileSet::CELL_NEIGHBOR_MAX; terrain_bit++) {
+							TileSet::CellNeighbor cell_neighbor = TileSet::CellNeighbor(terrain_bit);
+							if (is_valid_terrain_peering_bit(terrain_set, cell_neighbor)) {
+								int terrain = tile_data->get_terrain_peering_bit(cell_neighbor);
+								if (terrain >= 0) {
+									if (terrain >= (int)bit_counts.size()) {
+										WARN_PRINT(vformat("Invalid terrain peering bit: %d", terrain));
+									} else {
+										bit_counts[terrain] += 1;
+									}
+								}
+							}
+						}
+
+						for (int terrain = 0; terrain < get_terrains_count(terrain_set); terrain++) {
+							int vc = get_terrain_variants_count(terrain_set, terrain);
+							for (int vsi = 0; vsi < (int)variant_slots.size(); vsi++) {
+								int safe_slot = (variant_slots[vsi] <= vc) ? variant_slots[vsi] : 0;
+								if ((int)counts[terrain_set][terrain].size() <= safe_slot) {
+									continue;
+								}
+								if ((bit_counts[terrain] > counts[terrain_set][terrain][safe_slot].count) || (bit_counts[terrain] == counts[terrain_set][terrain][safe_slot].count && tile_data->get_probability() > counts[terrain_set][terrain][safe_slot].probability)) {
+									counts[terrain_set][terrain][safe_slot].count = bit_counts[terrain];
+									counts[terrain_set][terrain][safe_slot].probability = tile_data->get_probability();
+									counts[terrain_set][terrain][safe_slot].texture = atlas_source->get_texture();
+									counts[terrain_set][terrain][safe_slot].region = atlas_source->get_tile_texture_region(tile_id);
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Generate the icons.
+	for (int terrain_set = 0; terrain_set < get_terrain_sets_count(); terrain_set++) {
+		for (int terrain = 0; terrain < get_terrains_count(terrain_set); terrain++) {
+			int variant_count = get_terrain_variants_count(terrain_set, terrain);
+			int slots = variant_count + 1;
+			for (int slot = 0; slot < slots; slot++) {
+				Ref<Image> dst_image;
+				dst_image.instantiate();
+				if (slot < (int)counts[terrain_set][terrain].size() && counts[terrain_set][terrain][slot].count > 0) {
+					Ref<Texture2D> src_texture = counts[terrain_set][terrain][slot].texture;
+					ERR_FAIL_COND_V(src_texture.is_null(), output);
+					Ref<Image> src_image = src_texture->get_image();
+					ERR_FAIL_COND_V(src_image.is_null(), output);
+					Rect2i region = counts[terrain_set][terrain][slot].region;
+
+					dst_image->initialize_data(region.size.x, region.size.y, false, src_image->get_format());
+					dst_image->blit_rect(src_image, region, Point2i());
+					dst_image->convert(Image::FORMAT_RGBA8);
+					dst_image->resize(p_size.x, p_size.y, Image::INTERPOLATE_NEAREST);
+				} else {
+					dst_image->initialize_data(1, 1, false, Image::FORMAT_RGBA8);
+					dst_image->set_pixel(0, 0, get_terrain_color(terrain_set, terrain));
+				}
+				Ref<ImageTexture> icon = ImageTexture::create_from_image(dst_image);
+				icon->set_size_override(p_size);
+				output.write[terrain_set].write[terrain].write[slot] = icon;
+			}
 		}
 	}
 	return output;
@@ -3940,6 +4213,27 @@ bool TileSet::_set(const StringName &p_name, const Variant &p_value) {
 					}
 					set_terrain_color(terrain_set_index, terrain_index, p_value);
 					return true;
+				} else {
+					// Sub-split components[2] to handle variant paths like "variant_0/name".
+					Vector<String> sub = components[2].split("/", true, 1);
+					if (sub.size() >= 2 && sub[0].begins_with("variant_") && sub[0].trim_prefix("variant_").is_valid_int()) {
+						int variant_index = sub[0].trim_prefix("variant_").to_int();
+						ERR_FAIL_COND_V(variant_index < 0, false);
+						if (sub[1] == "name") {
+							ERR_FAIL_COND_V(!p_value.is_string(), false);
+							while (terrain_set_index >= terrain_sets.size()) {
+								add_terrain_set();
+							}
+							while (terrain_index >= terrain_sets[terrain_set_index].terrains.size()) {
+								add_terrain(terrain_set_index);
+							}
+							while (variant_index >= get_terrain_variants_count(terrain_set_index, terrain_index)) {
+								add_terrain_variant(terrain_set_index, terrain_index);
+							}
+							set_terrain_variant_name(terrain_set_index, terrain_index, variant_index, p_value);
+							return true;
+						}
+					}
 				}
 			}
 		} else if (components.size() == 2 && components[0].begins_with("navigation_layer_") && components[0].trim_prefix("navigation_layer_").is_valid_int()) {
@@ -4081,6 +4375,19 @@ bool TileSet::_get(const StringName &p_name, Variant &r_ret) const {
 			} else if (components[2] == "color") {
 				r_ret = get_terrain_color(terrain_set_index, terrain_index);
 				return true;
+			} else {
+				// Sub-split components[2] to handle variant paths like "variant_0/name".
+				Vector<String> sub = components[2].split("/", true, 1);
+				if (sub.size() >= 2 && sub[0].begins_with("variant_") && sub[0].trim_prefix("variant_").is_valid_int()) {
+					int variant_index = sub[0].trim_prefix("variant_").to_int();
+					if (variant_index < 0 || variant_index >= terrain_sets[terrain_set_index].terrains[terrain_index].variants.size()) {
+						return false;
+					}
+					if (sub[1] == "name") {
+						r_ret = get_terrain_variant_name(terrain_set_index, terrain_index, variant_index);
+						return true;
+					}
+				}
 			}
 		}
 	} else if (components.size() == 2 && components[0].begins_with("navigation_layer_") && components[0].trim_prefix("navigation_layer_").is_valid_int()) {
@@ -4209,6 +4516,10 @@ void TileSet::_get_property_list(List<PropertyInfo> *p_list) const {
 		for (int terrain_index = 0; terrain_index < terrain_sets[terrain_set_index].terrains.size(); terrain_index++) {
 			p_list->push_back(PropertyInfo(Variant::STRING, vformat("terrain_set_%d/terrain_%d/name", terrain_set_index, terrain_index)));
 			p_list->push_back(PropertyInfo(Variant::COLOR, vformat("terrain_set_%d/terrain_%d/color", terrain_set_index, terrain_index)));
+			p_list->push_back(PropertyInfo(Variant::NIL, vformat("terrain_set_%d/terrain_%d/variants", terrain_set_index, terrain_index), PROPERTY_HINT_NONE, "", PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_ARRAY, vformat("terrain_set_%d/terrain_%d/variant_", terrain_set_index, terrain_index)));
+			for (int variant_index = 0; variant_index < terrain_sets[terrain_set_index].terrains[terrain_index].variants.size(); variant_index++) {
+				p_list->push_back(PropertyInfo(Variant::STRING, vformat("terrain_set_%d/terrain_%d/variant_%d/name", terrain_set_index, terrain_index, variant_index)));
+			}
 		}
 	}
 
@@ -4335,6 +4646,14 @@ void TileSet::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_terrain_name", "terrain_set", "terrain_index"), &TileSet::get_terrain_name);
 	ClassDB::bind_method(D_METHOD("set_terrain_color", "terrain_set", "terrain_index", "color"), &TileSet::set_terrain_color);
 	ClassDB::bind_method(D_METHOD("get_terrain_color", "terrain_set", "terrain_index"), &TileSet::get_terrain_color);
+
+	// Terrain variants
+	ClassDB::bind_method(D_METHOD("get_terrain_variants_count", "terrain_set", "terrain_index"), &TileSet::get_terrain_variants_count);
+	ClassDB::bind_method(D_METHOD("add_terrain_variant", "terrain_set", "terrain_index", "to_position"), &TileSet::add_terrain_variant, DEFVAL(-1));
+	ClassDB::bind_method(D_METHOD("move_terrain_variant", "terrain_set", "terrain_index", "variant_index", "to_position"), &TileSet::move_terrain_variant);
+	ClassDB::bind_method(D_METHOD("remove_terrain_variant", "terrain_set", "terrain_index", "variant_index"), &TileSet::remove_terrain_variant);
+	ClassDB::bind_method(D_METHOD("set_terrain_variant_name", "terrain_set", "terrain_index", "variant_index", "name"), &TileSet::set_terrain_variant_name);
+	ClassDB::bind_method(D_METHOD("get_terrain_variant_name", "terrain_set", "terrain_index", "variant_index"), &TileSet::get_terrain_variant_name);
 
 #ifndef NAVIGATION_2D_DISABLED
 	// Navigation
@@ -4600,6 +4919,22 @@ void TileSetAtlasSource::remove_terrain(int p_terrain_set, int p_index) {
 	for (KeyValue<Vector2i, TileAlternativesData> E_tile : tiles) {
 		for (KeyValue<int, TileData *> E_alternative : E_tile.value.alternatives) {
 			E_alternative.value->remove_terrain(p_terrain_set, p_index);
+		}
+	}
+}
+
+void TileSetAtlasSource::move_terrain_variant(int p_terrain_set, int p_terrain_index, int p_from_index, int p_to_pos) {
+	for (KeyValue<Vector2i, TileAlternativesData> E_tile : tiles) {
+		for (KeyValue<int, TileData *> E_alternative : E_tile.value.alternatives) {
+			E_alternative.value->move_terrain_variant(p_terrain_set, p_terrain_index, p_from_index, p_to_pos);
+		}
+	}
+}
+
+void TileSetAtlasSource::remove_terrain_variant(int p_terrain_set, int p_terrain_index, int p_index) {
+	for (KeyValue<Vector2i, TileAlternativesData> E_tile : tiles) {
+		for (KeyValue<int, TileData *> E_alternative : E_tile.value.alternatives) {
+			E_alternative.value->remove_terrain_variant(p_terrain_set, p_terrain_index, p_index);
 		}
 	}
 }
@@ -6110,6 +6445,7 @@ void TileData::remove_terrain(int p_terrain_set, int p_index) {
 	if (terrain_set == p_terrain_set) {
 		if (terrain == p_index) {
 			terrain = -1;
+			terrain_variants.clear();
 		} else if (terrain > p_index) {
 			terrain -= 1;
 		}
@@ -6121,6 +6457,42 @@ void TileData::remove_terrain(int p_terrain_set, int p_index) {
 				terrain_peering_bits[i] -= 1;
 			}
 		}
+	}
+}
+
+void TileData::move_terrain_variant(int p_terrain_set, int p_terrain_index, int p_from_index, int p_to_pos) {
+	if (terrain_set == p_terrain_set && terrain == p_terrain_index) {
+		for (int i = 0; i < terrain_variants.size(); i++) {
+			int v = terrain_variants[i];
+			if (p_from_index == v) {
+				terrain_variants.write[i] = (p_from_index < p_to_pos) ? p_to_pos - 1 : p_to_pos;
+			} else {
+				if (p_from_index < v) {
+					v -= 1;
+				}
+				if (p_to_pos <= v) {
+					v += 1;
+				}
+				terrain_variants.write[i] = v;
+			}
+		}
+	}
+}
+
+void TileData::remove_terrain_variant(int p_terrain_set, int p_terrain_index, int p_index) {
+	if (terrain_set == p_terrain_set && terrain == p_terrain_index) {
+		PackedInt32Array new_variants;
+		for (int i = 0; i < terrain_variants.size(); i++) {
+			int v = terrain_variants[i];
+			if (v == p_index) {
+				// Skip, this variant is being removed.
+			} else if (v > p_index) {
+				new_variants.push_back(v - 1);
+			} else {
+				new_variants.push_back(v);
+			}
+		}
+		terrain_variants = new_variants;
 	}
 }
 
@@ -6525,6 +6897,7 @@ void TileData::set_terrain_set(int p_terrain_set) {
 	if (tile_set) {
 		ERR_FAIL_COND(p_terrain_set >= tile_set->get_terrain_sets_count());
 		terrain = -1;
+		terrain_variants.clear();
 		for (int i = 0; i < 16; i++) {
 			terrain_peering_bits[i] = -1;
 		}
@@ -6550,6 +6923,62 @@ void TileData::set_terrain(int p_terrain) {
 
 int TileData::get_terrain() const {
 	return terrain;
+}
+
+void TileData::set_terrain_variant(int p_variant) {
+	ERR_FAIL_COND(p_variant < -1);
+	if (tile_set && terrain_set >= 0 && terrain >= 0 && p_variant >= 0) {
+		ERR_FAIL_COND(p_variant >= tile_set->get_terrain_variants_count(terrain_set, terrain));
+	}
+	terrain_variants.clear();
+	if (p_variant >= 0) {
+		terrain_variants.push_back(p_variant);
+	}
+	emit_signal(CoreStringName(changed));
+}
+
+int TileData::get_terrain_variant() const {
+	if (terrain_variants.size() > 0) {
+		return terrain_variants[0];
+	}
+	return -1;
+}
+
+void TileData::set_terrain_variants(const PackedInt32Array &p_variants) {
+	terrain_variants = p_variants;
+	emit_signal(CoreStringName(changed));
+}
+
+PackedInt32Array TileData::get_terrain_variants() const {
+	return terrain_variants;
+}
+
+bool TileData::has_terrain_variant(int p_variant) const {
+	if (p_variant < 0) {
+		return terrain_variants.is_empty();
+	}
+	return terrain_variants.has(p_variant);
+}
+
+void TileData::add_terrain_variant_membership(int p_variant) {
+	if (p_variant < 0) {
+		// Adding "untagged" membership = clear all variants.
+		terrain_variants.clear();
+		emit_signal(CoreStringName(changed));
+		return;
+	}
+	if (!terrain_variants.has(p_variant)) {
+		terrain_variants.push_back(p_variant);
+		emit_signal(CoreStringName(changed));
+	}
+}
+
+void TileData::remove_terrain_variant_membership(int p_variant) {
+	int idx = terrain_variants.find(p_variant);
+	if (idx >= 0) {
+		terrain_variants.remove_at(idx);
+		emit_signal(CoreStringName(changed));
+	}
 }
 
 void TileData::set_terrain_peering_bit(TileSet::CellNeighbor p_peering_bit, int p_terrain_index) {
@@ -6867,6 +7296,13 @@ bool TileData::_set(const StringName &p_name, const Variant &p_value) {
 			}
 		}
 		return false;
+	} else if (components.size() == 1 && components[0] == "terrain_variant") {
+		// Backward compat: single int → set as sole variant.
+		set_terrain_variant(p_value);
+		return true;
+	} else if (components.size() == 1 && components[0] == "terrain_variants") {
+		set_terrain_variants(p_value);
+		return true;
 	} else if (components.size() == 1 && components[0].begins_with("custom_data_") && components[0].trim_prefix("custom_data_").is_valid_int()) {
 		// Custom data layers.
 		int layer_index = components[0].trim_prefix("custom_data_").to_int();
@@ -6978,6 +7414,13 @@ bool TileData::_get(const StringName &p_name, Variant &r_ret) const {
 				}
 			}
 			return false;
+		} else if (components.size() == 1 && components[0] == "terrain_variant") {
+			// Backward compat: return first variant or -1.
+			r_ret = get_terrain_variant();
+			return true;
+		} else if (components.size() == 1 && components[0] == "terrain_variants") {
+			r_ret = terrain_variants;
+			return true;
 		}
 #ifndef NAVIGATION_2D_DISABLED
 		else if (components.size() == 2 && components[0].begins_with("navigation_layer_") && components[0].trim_prefix("navigation_layer_").is_valid_int()) {
@@ -7074,6 +7517,13 @@ void TileData::_get_property_list(List<PropertyInfo> *p_list) const {
 		// Terrain data
 		if (terrain_set >= 0) {
 			p_list->push_back(PropertyInfo(Variant::NIL, GNAME("Terrains", ""), PROPERTY_HINT_NONE, "", PROPERTY_USAGE_GROUP));
+			if (terrain >= 0 && tile_set->get_terrain_variants_count(terrain_set, terrain) > 0) {
+				property_info = PropertyInfo(Variant::PACKED_INT32_ARRAY, PNAME("terrain_variants"));
+				if (terrain_variants.is_empty()) {
+					property_info.usage ^= PROPERTY_USAGE_STORAGE;
+				}
+				p_list->push_back(property_info);
+			}
 			for (int i = 0; i < TileSet::CELL_NEIGHBOR_MAX; i++) {
 				TileSet::CellNeighbor bit = TileSet::CellNeighbor(i);
 				if (is_valid_terrain_peering_bit(bit)) {
@@ -7167,6 +7617,13 @@ void TileData::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("get_terrain_set"), &TileData::get_terrain_set);
 	ClassDB::bind_method(D_METHOD("set_terrain", "terrain"), &TileData::set_terrain);
 	ClassDB::bind_method(D_METHOD("get_terrain"), &TileData::get_terrain);
+	ClassDB::bind_method(D_METHOD("set_terrain_variant", "variant"), &TileData::set_terrain_variant);
+	ClassDB::bind_method(D_METHOD("get_terrain_variant"), &TileData::get_terrain_variant);
+	ClassDB::bind_method(D_METHOD("set_terrain_variants", "variants"), &TileData::set_terrain_variants);
+	ClassDB::bind_method(D_METHOD("get_terrain_variants"), &TileData::get_terrain_variants);
+	ClassDB::bind_method(D_METHOD("has_terrain_variant", "variant"), &TileData::has_terrain_variant);
+	ClassDB::bind_method(D_METHOD("add_terrain_variant_membership", "variant"), &TileData::add_terrain_variant_membership);
+	ClassDB::bind_method(D_METHOD("remove_terrain_variant_membership", "variant"), &TileData::remove_terrain_variant_membership);
 	ClassDB::bind_method(D_METHOD("set_terrain_peering_bit", "peering_bit", "terrain"), &TileData::set_terrain_peering_bit);
 	ClassDB::bind_method(D_METHOD("get_terrain_peering_bit", "peering_bit"), &TileData::get_terrain_peering_bit);
 	ClassDB::bind_method(D_METHOD("is_valid_terrain_peering_bit", "peering_bit"), &TileData::is_valid_terrain_peering_bit);

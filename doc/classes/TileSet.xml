@@ -79,6 +79,15 @@
 				Adds a new terrain to the given terrain set [param terrain_set] at the given position [param to_position] in the array. If [param to_position] is -1, adds it at the end of the array.
 			</description>
 		</method>
+		<method name="add_terrain_variant">
+			<return type="void" />
+			<param index="0" name="terrain_set" type="int" />
+			<param index="1" name="terrain_index" type="int" />
+			<param index="2" name="to_position" type="int" default="-1" />
+			<description>
+				Adds a new variant to the given terrain at position [param to_position]. Variants allow multiple visual styles for the same terrain connection (e.g. smooth vs. pit transitions). If [param to_position] is -1, adds it at the end.
+			</description>
+		</method>
 		<method name="add_terrain_set">
 			<return type="void" />
 			<param index="0" name="to_position" type="int" default="-1" />
@@ -289,6 +298,23 @@
 				Returns a terrain's name.
 			</description>
 		</method>
+		<method name="get_terrain_variant_name" qualifiers="const">
+			<return type="String" />
+			<param index="0" name="terrain_set" type="int" />
+			<param index="1" name="terrain_index" type="int" />
+			<param index="2" name="variant_index" type="int" />
+			<description>
+				Returns the name of a terrain variant.
+			</description>
+		</method>
+		<method name="get_terrain_variants_count" qualifiers="const">
+			<return type="int" />
+			<param index="0" name="terrain_set" type="int" />
+			<param index="1" name="terrain_index" type="int" />
+			<description>
+				Returns the number of variants for the given terrain.
+			</description>
+		</method>
 		<method name="get_terrain_set_mode" qualifiers="const">
 			<return type="int" enum="TileSet.TerrainMode" />
 			<param index="0" name="terrain_set" type="int" />
@@ -399,6 +425,16 @@
 				Moves the terrain at index [param terrain_index] for terrain set [param terrain_set] to the given position [param to_position] in the array. Also updates the atlas tiles accordingly.
 			</description>
 		</method>
+		<method name="move_terrain_variant">
+			<return type="void" />
+			<param index="0" name="terrain_set" type="int" />
+			<param index="1" name="terrain_index" type="int" />
+			<param index="2" name="variant_index" type="int" />
+			<param index="3" name="to_position" type="int" />
+			<description>
+				Moves the terrain variant at index [param variant_index] to the given position [param to_position]. Also updates atlas tiles accordingly.
+			</description>
+		</method>
 		<method name="move_terrain_set">
 			<return type="void" />
 			<param index="0" name="terrain_set" type="int" />
@@ -479,6 +515,15 @@
 			<param index="1" name="terrain_index" type="int" />
 			<description>
 				Removes the terrain at index [param terrain_index] in the given terrain set [param terrain_set]. Also updates the atlas tiles accordingly.
+			</description>
+		</method>
+		<method name="remove_terrain_variant">
+			<return type="void" />
+			<param index="0" name="terrain_set" type="int" />
+			<param index="1" name="terrain_index" type="int" />
+			<param index="2" name="variant_index" type="int" />
+			<description>
+				Removes the terrain variant at index [param variant_index]. Also updates atlas tiles accordingly.
 			</description>
 		</method>
 		<method name="remove_terrain_set">
@@ -626,6 +671,16 @@
 			<param index="2" name="name" type="String" />
 			<description>
 				Sets a terrain's name.
+			</description>
+		</method>
+		<method name="set_terrain_variant_name">
+			<return type="void" />
+			<param index="0" name="terrain_set" type="int" />
+			<param index="1" name="terrain_index" type="int" />
+			<param index="2" name="variant_index" type="int" />
+			<param index="3" name="name" type="String" />
+			<description>
+				Sets the name of a terrain variant.
 			</description>
 		</method>
 		<method name="set_terrain_set_mode">

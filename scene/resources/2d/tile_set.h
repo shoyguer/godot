@@ -345,6 +345,7 @@ private:
 	struct Terrain {
 		String name;
 		Color color;
+		Vector<String> variants;
 	};
 	struct TerrainSet {
 		TerrainMode mode = TERRAIN_MODE_MATCH_CORNERS_AND_SIDES;
@@ -356,7 +357,7 @@ private:
 	HashMap<TerrainMode, HashMap<CellNeighbor, Ref<ArrayMesh>>> terrain_peering_bits_meshes;
 	bool terrain_bits_meshes_dirty = true;
 
-	LocalVector<RBMap<TileSet::TerrainsPattern, RBSet<TileMapCell>>> per_terrain_pattern_tiles; // Cached data.
+	LocalVector<HashMap<int, RBMap<TileSet::TerrainsPattern, RBSet<TileMapCell>>>> per_terrain_pattern_tiles; // Cached data, keyed by variant (-1 = untagged).
 	bool terrains_cache_dirty = true;
 	void _update_terrains_cache();
 
@@ -480,6 +481,12 @@ public:
 	String get_terrain_name(int p_terrain_set, int p_terrain_index) const;
 	void set_terrain_color(int p_terrain_set, int p_terrain_index, Color p_color);
 	Color get_terrain_color(int p_terrain_set, int p_terrain_index) const;
+	int get_terrain_variants_count(int p_terrain_set, int p_terrain_index) const;
+	void add_terrain_variant(int p_terrain_set, int p_terrain_index, int p_to_pos = -1);
+	void move_terrain_variant(int p_terrain_set, int p_terrain_index, int p_from_index, int p_to_pos);
+	void remove_terrain_variant(int p_terrain_set, int p_terrain_index, int p_index);
+	void set_terrain_variant_name(int p_terrain_set, int p_terrain_index, int p_variant_index, String p_name);
+	String get_terrain_variant_name(int p_terrain_set, int p_terrain_index, int p_variant_index) const;
 	bool is_valid_terrain_peering_bit_for_mode(TileSet::TerrainMode p_terrain_mode, TileSet::CellNeighbor p_peering_bit) const;
 	bool is_valid_terrain_peering_bit(int p_terrain_set, TileSet::CellNeighbor p_peering_bit) const;
 
@@ -539,9 +546,10 @@ public:
 	int get_patterns_count();
 
 	// Terrains.
-	RBSet<TerrainsPattern> get_terrains_pattern_set(int p_terrain_set);
-	RBSet<TileMapCell> get_tiles_for_terrains_pattern(int p_terrain_set, TerrainsPattern p_terrain_tile_pattern);
-	TileMapCell get_random_tile_from_terrains_pattern(int p_terrain_set, TerrainsPattern p_terrain_tile_pattern);
+	RBSet<TerrainsPattern> get_terrains_pattern_set(int p_terrain_set, int p_variant = -1);
+	RBSet<TerrainsPattern> get_terrains_pattern_set_combined(int p_terrain_set);
+	RBSet<TileMapCell> get_tiles_for_terrains_pattern(int p_terrain_set, TerrainsPattern p_terrain_tile_pattern, int p_variant = -1);
+	TileMapCell get_random_tile_from_terrains_pattern(int p_terrain_set, TerrainsPattern p_terrain_tile_pattern, int p_variant = -1);
 
 	// Helpers
 	Vector<Vector2> get_tile_shape_polygon() const;
@@ -560,6 +568,7 @@ public:
 	Vector<Point2> get_terrain_peering_bit_polygon(int p_terrain_set, TileSet::CellNeighbor p_bit);
 	void draw_terrains(CanvasItem *p_canvas_item, Transform2D p_transform, const TileData *p_tile_data);
 	Vector<Vector<Ref<Texture2D>>> generate_terrains_icons(Size2i p_size);
+	Vector<Vector<Vector<Ref<Texture2D>>>> generate_terrains_icons_with_variants(Size2i p_size);
 
 	// Resource management
 	virtual void reset_state() override;
@@ -599,6 +608,8 @@ public:
 	virtual void add_terrain(int p_terrain_set, int p_index) {}
 	virtual void move_terrain(int p_terrain_set, int p_from_index, int p_to_pos) {}
 	virtual void remove_terrain(int p_terrain_set, int p_index) {}
+	virtual void move_terrain_variant(int p_terrain_set, int p_terrain_index, int p_from_index, int p_to_pos) {}
+	virtual void remove_terrain_variant(int p_terrain_set, int p_terrain_index, int p_index) {}
 	virtual void add_navigation_layer(int p_index) {}
 	virtual void move_navigation_layer(int p_from_index, int p_to_pos) {}
 	virtual void remove_navigation_layer(int p_index) {}
@@ -708,6 +719,8 @@ public:
 	virtual void add_terrain(int p_terrain_set, int p_index) override;
 	virtual void move_terrain(int p_terrain_set, int p_from_index, int p_to_pos) override;
 	virtual void remove_terrain(int p_terrain_set, int p_index) override;
+	virtual void move_terrain_variant(int p_terrain_set, int p_terrain_index, int p_from_index, int p_to_pos) override;
+	virtual void remove_terrain_variant(int p_terrain_set, int p_terrain_index, int p_index) override;
 #ifndef NAVIGATION_2D_DISABLED
 	virtual void add_navigation_layer(int p_index) override;
 	virtual void move_navigation_layer(int p_from_index, int p_to_pos) override;
@@ -890,6 +903,7 @@ private:
 	// Terrain
 	int terrain_set = -1;
 	int terrain = -1;
+	PackedInt32Array terrain_variants; // Empty = untagged. Contains non-negative variant indices for multi-membership.
 	int terrain_peering_bits[16] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 
 #ifndef NAVIGATION_2D_DISABLED
@@ -940,6 +954,8 @@ public:
 	void add_terrain(int p_terrain_set, int p_index);
 	void move_terrain(int p_terrain_set, int p_from_index, int p_to_pos);
 	void remove_terrain(int p_terrain_set, int p_index);
+	void move_terrain_variant(int p_terrain_set, int p_terrain_index, int p_from_index, int p_to_pos);
+	void remove_terrain_variant(int p_terrain_set, int p_terrain_index, int p_index);
 	void add_navigation_layer(int p_index);
 	void move_navigation_layer(int p_from_index, int p_to_pos);
 	void remove_navigation_layer(int p_index);
@@ -1008,6 +1024,13 @@ public:
 	int get_terrain_set() const;
 	void set_terrain(int p_terrain_id);
 	int get_terrain() const;
+	void set_terrain_variant(int p_variant); // Backward compat: clears array and sets single variant (-1 = clear).
+	int get_terrain_variant() const; // Backward compat: returns first element or -1.
+	void set_terrain_variants(const PackedInt32Array &p_variants);
+	PackedInt32Array get_terrain_variants() const;
+	bool has_terrain_variant(int p_variant) const;
+	void add_terrain_variant_membership(int p_variant);
+	void remove_terrain_variant_membership(int p_variant);
 	void set_terrain_peering_bit(TileSet::CellNeighbor p_peering_bit, int p_terrain_id);
 	int get_terrain_peering_bit(TileSet::CellNeighbor p_peering_bit) const;
 	bool is_valid_terrain_peering_bit(TileSet::CellNeighbor p_peering_bit) const;

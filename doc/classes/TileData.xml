@@ -291,6 +291,9 @@
 		<member name="terrain_set" type="int" setter="set_terrain_set" getter="get_terrain_set" default="-1">
 			ID of the terrain set that the tile uses.
 		</member>
+		<member name="terrain_variant" type="int" setter="set_terrain_variant" getter="get_terrain_variant" default="-1">
+			ID of the terrain variant this tile belongs to. [code]-1[/code] means untagged. When the autotiler is constrained to a specific variant, only tiles tagged with that variant will be used.
+		</member>
 		<member name="texture_origin" type="Vector2i" setter="set_texture_origin" getter="get_texture_origin" default="Vector2i(0, 0)">
 			Offsets the position of where the tile is drawn.
 		</member>
