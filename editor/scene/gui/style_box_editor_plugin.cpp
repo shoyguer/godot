@@ -117,26 +117,83 @@ void EditorPropertySideGroup::update_property() {
 
 void EditorPropertySideGroup::setup(const Vector<String> &p_properties, const Vector<String> &p_icons, const Vector<String> &p_labels,
 		bool p_is_int, double p_min, double p_max, double p_step,
-		bool p_allow_greater, bool p_allow_lesser, const String &p_suffix) {
+		bool p_allow_greater, bool p_allow_lesser, const String &p_suffix,
+		LayoutType p_layout) {
 	properties = p_properties;
 	icon_names = p_icons;
 	is_int = p_is_int;
-	for (int i = 0; i < spin_sliders.size(); i++) {
-		spin_sliders[i]->set_accessibility_name(p_labels[i]);
-		spin_sliders[i]->set_min(p_min);
-		spin_sliders[i]->set_max(p_max);
-		spin_sliders[i]->set_step(p_step);
-		spin_sliders[i]->set_allow_greater(p_allow_greater);
-		spin_sliders[i]->set_allow_lesser(p_allow_lesser);
-		spin_sliders[i]->set_suffix(p_suffix);
-		spin_sliders[i]->set_editing_integer(p_is_int);
+	layout_type = p_layout;
+
+	// Create the 4 icon + slider pairs. These are stored by index so that
+	// _value_changed() / update_property() / NOTIFICATION_THEME_CHANGED can
+	// access them directly, regardless of their position in the grid.
+	spin_sliders.resize(4);
+	spin_icons.resize(4);
+	EditorSpinSlider **spin = spin_sliders.ptrw();
+	TextureRect **icon = spin_icons.ptrw();
+	for (int i = 0; i < 4; i++) {
+		icon[i] = memnew(TextureRect);
+		icon[i]->set_stretch_mode(TextureRect::STRETCH_KEEP_CENTERED);
+		icon[i]->set_v_size_flags(SIZE_SHRINK_CENTER);
+
+		spin[i] = memnew(EditorSpinSlider);
+		spin[i]->set_flat(true);
+		spin[i]->set_h_size_flags(SIZE_EXPAND_FILL);
+		spin[i]->set_accessibility_name(p_labels[i]);
+		spin[i]->set_min(p_min);
+		spin[i]->set_max(p_max);
+		spin[i]->set_step(p_step);
+		spin[i]->set_allow_greater(p_allow_greater);
+		spin[i]->set_allow_lesser(p_allow_lesser);
+		spin[i]->set_suffix(p_suffix);
+		spin[i]->set_editing_integer(p_is_int);
+		spin[i]->connect(SceneStringName(value_changed), callable_mp(this, &EditorPropertySideGroup::_value_changed).bind(i));
+		add_focusable(spin[i]);
+	}
+
+	if (p_layout == LAYOUT_DIAMOND) {
+		// Diamond layout (sides):  _ T _  /  L _ R  /  _ B _
+		// Properties by index: L=0, T=1, R=2, B=3.
+		// Grid slot order (left-to-right, top-to-bottom) with -1 = empty spacer:
+		//   slot 0:spacer  slot 1:T  slot 2:spacer
+		//   slot 3:L       slot 4:spacer  slot 5:R
+		//   slot 6:spacer  slot 7:B  slot 8:spacer
+		static const int diamond_order[9] = { -1, 1, -1, 0, -1, 2, -1, 3, -1 };
+		grid->set_columns(3);
+		for (int slot = 0; slot < 9; slot++) {
+			int idx = diamond_order[slot];
+			if (idx < 0) {
+				Control *spc = memnew(Control);
+				spc->set_h_size_flags(SIZE_EXPAND_FILL);
+				grid->add_child(spc);
+			} else {
+				HBoxContainer *cell = memnew(HBoxContainer);
+				cell->set_h_size_flags(SIZE_EXPAND_FILL);
+				cell->add_child(spin_icons[idx]);
+				cell->add_child(spin_sliders[idx]);
+				grid->add_child(cell);
+			}
+		}
+	} else {
+		// LAYOUT_PAIR: 2×2 grid (corners). Properties TL=0, TR=1, BL=2, BR=3.
+		// _update_grid_columns() auto-collapses to 1-per-row when panel is narrow.
+		grid->set_columns(2);
+		for (int i = 0; i < 4; i++) {
+			HBoxContainer *cell = memnew(HBoxContainer);
+			cell->set_h_size_flags(SIZE_EXPAND_FILL);
+			cell->add_child(spin_icons[i]);
+			cell->add_child(spin_sliders[i]);
+			grid->add_child(cell);
+		}
 	}
 }
 
 void EditorPropertySideGroup::_update_grid_columns() {
-	// Switch between 2 sliders per row (4 grid columns) and 1 per row (2 grid columns)
-	// depending on available width, so the layout adapts when the inspector panel is narrow.
-	grid->set_columns(grid->get_size().x >= 200.0f * EDSCALE ? 4 : 2);
+	if (layout_type == LAYOUT_DIAMOND) {
+		return; // Diamond layout is always 3 columns.
+	}
+	// LAYOUT_PAIR: 2 compound cells per row when wide, 1 per row when narrow.
+	grid->set_columns(grid->get_size().x >= 200.0f * EDSCALE ? 2 : 1);
 }
 
 EditorPropertySideGroup::EditorPropertySideGroup() {
@@ -148,32 +205,10 @@ EditorPropertySideGroup::EditorPropertySideGroup() {
 	spacer->set_custom_minimum_size(Size2(8 * EDSCALE, 0));
 	hb->add_child(spacer);
 
-	// GridContainer with 4 columns: [icon0][slider0][icon1][slider1] per row.
-	// That gives 2 pairs per row. _update_grid_columns() switches to 2 columns
-	// (1 pair per row) when the inspector panel is too narrow.
 	grid = memnew(GridContainer);
-	grid->set_columns(4);
 	grid->set_h_size_flags(SIZE_EXPAND_FILL);
 	grid->connect(SNAME("resized"), callable_mp(this, &EditorPropertySideGroup::_update_grid_columns));
 	hb->add_child(grid);
-
-	spin_sliders.resize(4);
-	spin_icons.resize(4);
-	EditorSpinSlider **spin = spin_sliders.ptrw();
-	TextureRect **icon = spin_icons.ptrw();
-	for (int i = 0; i < 4; i++) {
-		icon[i] = memnew(TextureRect);
-		icon[i]->set_stretch_mode(TextureRect::STRETCH_KEEP_CENTERED);
-		icon[i]->set_v_size_flags(SIZE_SHRINK_CENTER);
-		grid->add_child(icon[i]);
-
-		spin[i] = memnew(EditorSpinSlider);
-		spin[i]->set_flat(true);
-		spin[i]->set_h_size_flags(SIZE_EXPAND_FILL);
-		spin[i]->connect(SceneStringName(value_changed), callable_mp(this, &EditorPropertySideGroup::_value_changed).bind(i));
-		add_focusable(spin[i]);
-		grid->add_child(spin[i]);
-	}
 
 	linked = memnew(TextureButton);
 	linked->set_toggle_mode(true);
@@ -294,7 +329,7 @@ bool EditorInspectorPluginStyleBox::parse_property(Object *p_object, const Varia
 
 	if (p_path == "content_margin_left") {
 		EditorPropertySideGroup *ep = memnew(EditorPropertySideGroup);
-		ep->setup(content_props, side_icons, side_labels, false, -1.0, 2048.0, 1.0, false, false, "px");
+		ep->setup(content_props, side_icons, side_labels, false, -1.0, 2048.0, 1.0, false, false, "px", EditorPropertySideGroup::LAYOUT_DIAMOND);
 		add_property_editor_for_multiple_properties(TTR("Content Margins"), content_props, ep);
 		return true;
 	}
@@ -312,7 +347,7 @@ bool EditorInspectorPluginStyleBox::parse_property(Object *p_object, const Varia
 
 	if (p_path == "border_width_left") {
 		EditorPropertySideGroup *ep = memnew(EditorPropertySideGroup);
-		ep->setup(border_props, side_icons, side_labels, true, 0.0, 100.0, 1.0, true, false, "px");
+		ep->setup(border_props, side_icons, side_labels, true, 0.0, 100.0, 1.0, true, false, "px", EditorPropertySideGroup::LAYOUT_DIAMOND);
 		add_property_editor_for_multiple_properties(TTR("Border Width"), border_props, ep);
 		return true;
 	}
@@ -320,14 +355,14 @@ bool EditorInspectorPluginStyleBox::parse_property(Object *p_object, const Varia
 		return true;
 	}
 
-	// Corner Radius group (int, order: top_left, top_right, bottom_right, bottom_left).
-	static const Vector<String> corner_props = { "corner_radius_top_left", "corner_radius_top_right", "corner_radius_bottom_right", "corner_radius_bottom_left" };
-	static const Vector<String> corner_icons = { "ControlAlignTopLeft", "ControlAlignTopRight", "ControlAlignBottomRight", "ControlAlignBottomLeft" };
-	static const Vector<String> corner_labels = { "Top Left", "Top Right", "Bottom Right", "Bottom Left" };
+	// Corner Radius group (int). Visual order matches spatial position: TL=0, TR=1, BL=2, BR=3.
+	static const Vector<String> corner_props = { "corner_radius_top_left", "corner_radius_top_right", "corner_radius_bottom_left", "corner_radius_bottom_right" };
+	static const Vector<String> corner_icons = { "ControlAlignTopLeft", "ControlAlignTopRight", "ControlAlignBottomLeft", "ControlAlignBottomRight" };
+	static const Vector<String> corner_labels = { "Top Left", "Top Right", "Bottom Left", "Bottom Right" };
 
 	if (p_path == "corner_radius_top_left") {
 		EditorPropertySideGroup *ep = memnew(EditorPropertySideGroup);
-		ep->setup(corner_props, corner_icons, corner_labels, true, 0.0, 100.0, 1.0, true, false, "px");
+		ep->setup(corner_props, corner_icons, corner_labels, true, 0.0, 100.0, 1.0, true, false, "px", EditorPropertySideGroup::LAYOUT_PAIR);
 		add_property_editor_for_multiple_properties(TTR("Corner Radius"), corner_props, ep);
 		return true;
 	}
@@ -340,7 +375,7 @@ bool EditorInspectorPluginStyleBox::parse_property(Object *p_object, const Varia
 
 	if (p_path == "expand_margin_left") {
 		EditorPropertySideGroup *ep = memnew(EditorPropertySideGroup);
-		ep->setup(expand_props, side_icons, side_labels, false, 0.0, 100.0, 1.0, true, false, "px");
+		ep->setup(expand_props, side_icons, side_labels, false, 0.0, 100.0, 1.0, true, false, "px", EditorPropertySideGroup::LAYOUT_DIAMOND);
 		add_property_editor_for_multiple_properties(TTR("Expand Margins"), expand_props, ep);
 		return true;
 	}

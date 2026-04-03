@@ -44,6 +44,15 @@ class TextureButton;
 class EditorPropertySideGroup : public EditorProperty {
 	GDCLASS(EditorPropertySideGroup, EditorProperty);
 
+public:
+	enum LayoutType {
+		// 2×2 grid (corners): [TL][TR] / [BL][BR], collapses to 1-per-row when narrow.
+		LAYOUT_PAIR,
+		// Diamond cross (sides):  _ T _  /  L _ R  /  _ B _ .
+		LAYOUT_DIAMOND,
+	};
+
+private:
 	Vector<EditorSpinSlider *> spin_sliders;
 	Vector<TextureRect *> spin_icons;
 	Vector<String> icon_names;
@@ -51,6 +60,7 @@ class EditorPropertySideGroup : public EditorProperty {
 	TextureButton *linked = nullptr;
 	Vector<String> properties;
 	bool is_int = false;
+	LayoutType layout_type = LAYOUT_PAIR;
 
 	void _value_changed(double p_val, int p_idx);
 	void _store_link(bool p_linked);
@@ -64,7 +74,8 @@ public:
 	virtual void update_property() override;
 	void setup(const Vector<String> &p_properties, const Vector<String> &p_icons, const Vector<String> &p_labels,
 			bool p_is_int, double p_min, double p_max, double p_step,
-			bool p_allow_greater, bool p_allow_lesser, const String &p_suffix);
+			bool p_allow_greater, bool p_allow_lesser, const String &p_suffix,
+			LayoutType p_layout = LAYOUT_PAIR);
 	EditorPropertySideGroup();
 };
 
