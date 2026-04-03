@@ -3204,7 +3204,7 @@ void TileMapLayerEditorTerrainsPlugin::forward_canvas_draw_over_viewport(Control
 				}
 				TileData *tile_data = atlas_source->get_tile_data(atlas_coords, alt);
 				if (tile_data && tile_data->get_terrain_set() == selected_terrain_set && !tile_data->has_terrain_variant(selected_variant) && !tile_data->get_terrain_variants().is_empty()) {
-					// Dim tiles with wrong variant. Untagged tiles (empty variants) are shared and never dimmed.
+					// Dim tiles with wrong variant. Unassigned tiles (empty variants) are shared and never dimmed.
 					Transform2D tile_xform;
 					tile_xform.set_origin(tile_set->map_to_local(coords));
 					tile_xform.set_scale(tile_shape_size);

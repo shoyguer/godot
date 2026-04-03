@@ -2080,8 +2080,8 @@ void TileDataTerrainsEditor::forward_draw_over_atlas(TileAtlasView *p_tile_atlas
 				Vector2 string_size = font->get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
 				p_canvas_item->draw_string_outline(font, p_transform.xform(position) + Vector2i(-string_size.x / 2, string_size.y / 2), text, HORIZONTAL_ALIGNMENT_CENTER, string_size.x, font_size, 1, Color(0, 0, 0, 1));
 				p_canvas_item->draw_string(font, p_transform.xform(position) + Vector2i(-string_size.x / 2, string_size.y / 2), text, HORIZONTAL_ALIGNMENT_CENTER, string_size.x, font_size, color);
-			} else if ((selected_variant >= 0 || terrain_has_variants) && !tile_data->has_terrain_variant(selected_variant) && !tile_data->get_terrain_variants().is_empty()) {
-				// Dimming for wrong variant (not untagged).
+			} else if (!tile_data->has_terrain_variant(selected_variant) && !tile_data->get_terrain_variants().is_empty()) {
+				// Dimming for wrong variant.
 				p_canvas_item->draw_set_transform_matrix(p_transform);
 				Rect2i rect = p_tile_set_atlas_source->get_tile_texture_region(coords);
 				p_canvas_item->draw_rect(rect, Color(0.0, 0.0, 0.0, 0.4));
@@ -2315,8 +2315,8 @@ void TileDataTerrainsEditor::forward_draw_over_alternatives(TileAtlasView *p_til
 					Vector2 string_size = font->get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size);
 					p_canvas_item->draw_string_outline(font, p_transform.xform(position) + Vector2i(-string_size.x / 2, string_size.y / 2), text, HORIZONTAL_ALIGNMENT_CENTER, string_size.x, font_size, 1, Color(0, 0, 0, 1));
 					p_canvas_item->draw_string(font, p_transform.xform(position) + Vector2i(-string_size.x / 2, string_size.y / 2), text, HORIZONTAL_ALIGNMENT_CENTER, string_size.x, font_size, color);
-				} else if ((alt_selected_variant >= 0 || alt_terrain_has_variants) && !tile_data->has_terrain_variant(alt_selected_variant) && !tile_data->get_terrain_variants().is_empty()) {
-					// Dimming for wrong variant (not untagged).
+				} else if (!tile_data->has_terrain_variant(alt_selected_variant) && !tile_data->get_terrain_variants().is_empty()) {
+					// Dimming for wrong variant.
 					p_canvas_item->draw_set_transform_matrix(p_transform);
 					Rect2i rect = p_tile_atlas_view->get_alternative_tile_rect(coords, alternative_tile);
 					p_canvas_item->draw_rect(rect, Color(0.0, 0.0, 0.0, 0.4));
@@ -2728,10 +2728,8 @@ void TileDataTerrainsEditor::forward_painting_atlas_gui_input(TileAtlasView *p_t
 						undo_redo->add_undo_property(p_tile_set_atlas_source, vformat("%d:%d/%d/terrain", coords.x, coords.y, E.key.alternative_tile), dict["terrain"]);
 						PackedInt32Array old_variants = dict["terrain_variants"];
 						PackedInt32Array new_variants = old_variants.duplicate();
-						if (painted_variant >= 0 && !new_variants.has(painted_variant)) {
+						if (!new_variants.has(painted_variant)) {
 							new_variants.push_back(painted_variant);
-						} else if (painted_variant < 0) {
-							new_variants.clear();
 						}
 						undo_redo->add_do_property(p_tile_set_atlas_source, vformat("%d:%d/%d/terrain_variants", coords.x, coords.y, E.key.alternative_tile), new_variants);
 						undo_redo->add_undo_property(p_tile_set_atlas_source, vformat("%d:%d/%d/terrain_variants", coords.x, coords.y, E.key.alternative_tile), old_variants);
@@ -2801,10 +2799,8 @@ void TileDataTerrainsEditor::forward_painting_atlas_gui_input(TileAtlasView *p_t
 							undo_redo->add_undo_property(p_tile_set_atlas_source, vformat("%d:%d/%d/terrain", coords.x, coords.y, E.alternative_tile), tile_data->get_terrain());
 							PackedInt32Array old_variants = tile_data->get_terrain_variants();
 							PackedInt32Array new_variants = old_variants.duplicate();
-							if (painted_variant >= 0 && !new_variants.has(painted_variant)) {
+							if (!new_variants.has(painted_variant)) {
 								new_variants.push_back(painted_variant);
-							} else if (painted_variant < 0) {
-								new_variants.clear();
 							}
 							undo_redo->add_do_property(p_tile_set_atlas_source, vformat("%d:%d/%d/terrain_variants", coords.x, coords.y, E.alternative_tile), new_variants);
 							undo_redo->add_undo_property(p_tile_set_atlas_source, vformat("%d:%d/%d/terrain_variants", coords.x, coords.y, E.alternative_tile), old_variants);
@@ -3150,10 +3146,8 @@ void TileDataTerrainsEditor::forward_painting_alternatives_gui_input(TileAtlasVi
 						undo_redo->add_undo_property(p_tile_set_atlas_source, vformat("%d:%d/%d/terrain", coords.x, coords.y, E.key.alternative_tile), dict["terrain"]);
 						PackedInt32Array old_variants = dict["terrain_variants"];
 						PackedInt32Array new_variants = old_variants;
-						if (painted_variant >= 0 && !new_variants.has(painted_variant)) {
+						if (!new_variants.has(painted_variant)) {
 							new_variants.push_back(painted_variant);
-						} else if (painted_variant < 0) {
-							new_variants.clear();
 						}
 						undo_redo->add_do_property(p_tile_set_atlas_source, vformat("%d:%d/%d/terrain_variants", coords.x, coords.y, E.key.alternative_tile), new_variants);
 						undo_redo->add_undo_property(p_tile_set_atlas_source, vformat("%d:%d/%d/terrain_variants", coords.x, coords.y, E.key.alternative_tile), old_variants);

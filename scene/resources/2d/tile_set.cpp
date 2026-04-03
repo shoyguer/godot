@@ -6926,6 +6926,7 @@ int TileData::get_terrain() const {
 }
 
 void TileData::set_terrain_variant(int p_variant) {
+	print_line(vformat("set_terrain_variant(%d) CALLED", p_variant));
 	ERR_FAIL_COND(p_variant < -1);
 	if (tile_set && terrain_set >= 0 && terrain >= 0 && p_variant >= 0) {
 		ERR_FAIL_COND(p_variant >= tile_set->get_terrain_variants_count(terrain_set, terrain));
@@ -6945,6 +6946,7 @@ int TileData::get_terrain_variant() const {
 }
 
 void TileData::set_terrain_variants(const PackedInt32Array &p_variants) {
+	print_line(vformat("set_terrain_variants() size=%d", p_variants.size()));
 	terrain_variants = p_variants;
 	emit_signal(CoreStringName(changed));
 }
@@ -6954,26 +6956,28 @@ PackedInt32Array TileData::get_terrain_variants() const {
 }
 
 bool TileData::has_terrain_variant(int p_variant) const {
-	if (p_variant < 0) {
-		return terrain_variants.is_empty();
-	}
 	return terrain_variants.has(p_variant);
 }
 
 void TileData::add_terrain_variant_membership(int p_variant) {
-	if (p_variant < 0) {
-		// Adding "untagged" membership = clear all variants.
-		terrain_variants.clear();
-		emit_signal(CoreStringName(changed));
-		return;
+	String before_str;
+	for (int i = 0; i < terrain_variants.size(); i++) {
+		if (i > 0) {
+			before_str += ", ";
+		}
+		before_str += itos(terrain_variants[i]);
 	}
 	if (!terrain_variants.has(p_variant)) {
 		terrain_variants.push_back(p_variant);
+		print_line(vformat("add_terrain_variant_membership(%d) - BEFORE: [%s] -> AFTER size=%d", p_variant, before_str, terrain_variants.size()));
 		emit_signal(CoreStringName(changed));
+	} else {
+		print_line(vformat("add_terrain_variant_membership(%d) - already has it, [%s]", p_variant, before_str));
 	}
 }
 
 void TileData::remove_terrain_variant_membership(int p_variant) {
+	print_line(vformat("remove_terrain_variant_membership(%d) size_before=%d", p_variant, terrain_variants.size()));
 	int idx = terrain_variants.find(p_variant);
 	if (idx >= 0) {
 		terrain_variants.remove_at(idx);
