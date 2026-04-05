@@ -93,9 +93,7 @@ void EditorPropertySideGroup::_notification(int p_what) {
 		case NOTIFICATION_THEME_CHANGED: {
 			int icon_size = get_theme_constant(SNAME("class_icon_size"), EditorStringName(Editor));
 			for (int i = 0; i < spin_icons.size(); i++) {
-				if (i < icon_names.size()) {
-					spin_icons[i]->set_texture(get_editor_theme_icon(icon_names[i]));
-				}
+				spin_icons[i]->set_texture(get_editor_theme_icon(icon_names[i]));
 				spin_icons[i]->set_custom_minimum_size(Size2(icon_size, icon_size));
 			}
 			linked->set_texture_normal(get_editor_theme_icon(SNAME("Unlinked")));
@@ -124,9 +122,6 @@ void EditorPropertySideGroup::setup(const Vector<String> &p_properties, const Ve
 	is_int = p_is_int;
 	layout_type = p_layout;
 
-	// Create the 4 icon + slider pairs. These are stored by index so that
-	// _value_changed() / update_property() / NOTIFICATION_THEME_CHANGED can
-	// access them directly, regardless of their position in the grid.
 	spin_sliders.resize(4);
 	spin_icons.resize(4);
 	EditorSpinSlider **spin = spin_sliders.ptrw();
@@ -152,12 +147,18 @@ void EditorPropertySideGroup::setup(const Vector<String> &p_properties, const Ve
 	}
 
 	if (p_layout == LAYOUT_DIAMOND) {
-		// Diamond layout (sides):  _ T _  /  L _ R  /  _ B _
-		// Properties by index: L=0, T=1, R=2, B=3.
-		// Grid slot order (left-to-right, top-to-bottom) with -1 = empty spacer:
-		//   slot 0:spacer  slot 1:T  slot 2:spacer
-		//   slot 3:L       slot 4:spacer  slot 5:R
-		//   slot 6:spacer  slot 7:B  slot 8:spacer
+		// Fixed width keeps the updown arrows close to the number text
+		// regardless of how wide the inspector panel is.
+		for (int i = 0; i < 4; i++) {
+			spin[i]->set_h_size_flags(SIZE_FILL);
+			spin[i]->set_custom_minimum_size(Size2(90 * EDSCALE, 0));
+		}
+
+		// Diamond layout:
+		// _ T _
+		// L _ R
+		// _ B _
+		// L=0, T=1, R=2, B=3; -1 = empty spacer.
 		static const int diamond_order[9] = { -1, 1, -1, 0, -1, 2, -1, 3, -1 };
 		grid->set_columns(3);
 		for (int slot = 0; slot < 9; slot++) {
@@ -169,14 +170,14 @@ void EditorPropertySideGroup::setup(const Vector<String> &p_properties, const Ve
 			} else {
 				HBoxContainer *cell = memnew(HBoxContainer);
 				cell->set_h_size_flags(SIZE_EXPAND_FILL);
+				cell->set_alignment(BoxContainer::ALIGNMENT_CENTER);
 				cell->add_child(spin_icons[idx]);
 				cell->add_child(spin_sliders[idx]);
 				grid->add_child(cell);
 			}
 		}
 	} else {
-		// LAYOUT_PAIR: 2×2 grid (corners). Properties TL=0, TR=1, BL=2, BR=3.
-		// _update_grid_columns() auto-collapses to 1-per-row when panel is narrow.
+		// 2x2 grid, collapses to 1 per row when the inspector panel is narrow.
 		grid->set_columns(2);
 		for (int i = 0; i < 4; i++) {
 			HBoxContainer *cell = memnew(HBoxContainer);
@@ -190,17 +191,15 @@ void EditorPropertySideGroup::setup(const Vector<String> &p_properties, const Ve
 
 void EditorPropertySideGroup::_update_grid_columns() {
 	if (layout_type == LAYOUT_DIAMOND) {
-		return; // Diamond layout is always 3 columns.
+		return;
 	}
-	// LAYOUT_PAIR: 2 compound cells per row when wide, 1 per row when narrow.
-	grid->set_columns(grid->get_size().x >= 200.0f * EDSCALE ? 2 : 1);
+	grid->set_columns(grid->get_size().x >= 200.0 * EDSCALE ? 2 : 1);
 }
 
 EditorPropertySideGroup::EditorPropertySideGroup() {
 	HBoxContainer *hb = memnew(HBoxContainer);
 	hb->set_h_size_flags(SIZE_EXPAND_FILL);
 
-	// Small indent so the first icon doesn't touch the left edge.
 	Control *spacer = memnew(Control);
 	spacer->set_custom_minimum_size(Size2(8 * EDSCALE, 0));
 	hb->add_child(spacer);
@@ -314,10 +313,8 @@ bool EditorInspectorPluginStyleBox::can_handle(Object *p_object) {
 }
 
 void EditorInspectorPluginStyleBox::parse_begin(Object *p_object) {
-	Ref<StyleBox> sb = Ref<StyleBox>(Object::cast_to<StyleBox>(p_object));
-
 	StyleBoxPreview *preview = memnew(StyleBoxPreview);
-	preview->edit(sb);
+	preview->edit(Ref<StyleBox>(Object::cast_to<StyleBox>(p_object)));
 	add_custom_control(preview);
 }
 
@@ -342,7 +339,6 @@ bool EditorInspectorPluginStyleBox::parse_property(Object *p_object, const Varia
 		return false;
 	}
 
-	// Border Width group (int, order: left, top, right, bottom).
 	static const Vector<String> border_props = { "border_width_left", "border_width_top", "border_width_right", "border_width_bottom" };
 
 	if (p_path == "border_width_left") {
@@ -355,7 +351,7 @@ bool EditorInspectorPluginStyleBox::parse_property(Object *p_object, const Varia
 		return true;
 	}
 
-	// Corner Radius group (int). Visual order matches spatial position: TL=0, TR=1, BL=2, BR=3.
+	// Corner Radius group. Visual order matches spatial position: TL, TR, BL, BR.
 	static const Vector<String> corner_props = { "corner_radius_top_left", "corner_radius_top_right", "corner_radius_bottom_left", "corner_radius_bottom_right" };
 	static const Vector<String> corner_icons = { "ControlAlignTopLeft", "ControlAlignTopRight", "ControlAlignBottomLeft", "ControlAlignBottomRight" };
 	static const Vector<String> corner_labels = { "Top Left", "Top Right", "Bottom Left", "Bottom Right" };
@@ -370,7 +366,6 @@ bool EditorInspectorPluginStyleBox::parse_property(Object *p_object, const Varia
 		return true;
 	}
 
-	// Expand Margins group (float, order: left, top, right, bottom).
 	static const Vector<String> expand_props = { "expand_margin_left", "expand_margin_top", "expand_margin_right", "expand_margin_bottom" };
 
 	if (p_path == "expand_margin_left") {

@@ -32,7 +32,6 @@
 
 #include "editor/inspector/editor_inspector.h"
 #include "editor/plugins/editor_plugin.h"
-#include "scene/gui/texture_rect.h"
 
 class Button;
 class EditorSpinSlider;
@@ -40,16 +39,15 @@ class GridContainer;
 class StyleBox;
 class StyleBoxFlat;
 class TextureButton;
+class TextureRect;
 
 class EditorPropertySideGroup : public EditorProperty {
 	GDCLASS(EditorPropertySideGroup, EditorProperty);
 
 public:
 	enum LayoutType {
-		// 2×2 grid (corners): [TL][TR] / [BL][BR], collapses to 1-per-row when narrow.
-		LAYOUT_PAIR,
-		// Diamond cross (sides):  _ T _  /  L _ R  /  _ B _ .
-		LAYOUT_DIAMOND,
+		LAYOUT_PAIR, // 2x2 grid, used for corner properties.
+		LAYOUT_DIAMOND, // Diamond cross shape, used for side properties.
 	};
 
 private:
