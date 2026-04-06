@@ -903,7 +903,7 @@ private:
 	// Terrain
 	int terrain_set = -1;
 	int terrain = -1;
-	PackedInt32Array terrain_variants; // Empty = untagged. Contains non-negative variant indices for multi-membership.
+	PackedInt32Array terrain_variants; // Empty = unassigned. Stores -1 (untagged) or non-negative variant indices.
 	int terrain_peering_bits[16] = { -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1 };
 
 #ifndef NAVIGATION_2D_DISABLED

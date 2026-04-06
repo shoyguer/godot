@@ -1852,9 +1852,8 @@ TileSet::TerrainsPattern TileMapLayer::_get_best_terrain_pattern_for_constraints
 	if (tile_set.is_null()) {
 		return TileSet::TerrainsPattern();
 	}
-	// Returns all tiles compatible with the given constraints.
-	// Always use the combined pattern set (all variants) so the solver can find
-	// every possible pattern. The variant only controls which tile image is picked later.
+	// Use the combined pattern set so the solver considers all variants.
+	// The variant only controls which tile is picked later.
 	RBMap<TileSet::TerrainsPattern, int> terrain_pattern_score;
 	RBSet<TileSet::TerrainsPattern> pattern_set = tile_set->get_terrains_pattern_set_combined(p_terrain_set);
 	if (pattern_set.is_empty()) {
@@ -3056,9 +3055,8 @@ void TileMapLayer::set_cells_terrain_connect(TypedArray<Vector2i> p_cells, int p
 			TileMapCell c = tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, p_variant);
 			set_cell(kv.key, c.source_id, c.get_atlas_coords(), c.alternative_tile);
 		} else {
-			// Neighbor cell: preserve its existing variant.
+			// Neighbor cell: use the selected variant.
 			TileSet::TerrainsPattern in_map_terrain_pattern = TileSet::TerrainsPattern(*tile_set, p_terrain_set);
-			int neighbor_variant = -1;
 			TileMapCell cell = get_cell(kv.key);
 			if (cell.source_id != TileSet::INVALID_SOURCE) {
 				TileSetSource *source = *tile_set->get_source(cell.source_id);
@@ -3067,12 +3065,11 @@ void TileMapLayer::set_cells_terrain_connect(TypedArray<Vector2i> p_cells, int p
 					TileData *tile_data = atlas_source->get_tile_data(cell.get_atlas_coords(), cell.alternative_tile);
 					if (tile_data && tile_data->get_terrain_set() == p_terrain_set) {
 						in_map_terrain_pattern = tile_data->get_terrains_pattern();
-						neighbor_variant = tile_data->get_terrain_variant();
 					}
 				}
 			}
 			if (in_map_terrain_pattern != kv.value) {
-				TileMapCell c = tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, neighbor_variant);
+				TileMapCell c = tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, p_variant);
 				set_cell(kv.key, c.source_id, c.get_atlas_coords(), c.alternative_tile);
 			}
 		}
@@ -3097,9 +3094,8 @@ void TileMapLayer::set_cells_terrain_path(TypedArray<Vector2i> p_path, int p_ter
 			TileMapCell c = tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, p_variant);
 			set_cell(kv.key, c.source_id, c.get_atlas_coords(), c.alternative_tile);
 		} else {
-			// Neighbor cell: preserve its existing variant.
+			// Neighbor cell: use the selected variant.
 			TileSet::TerrainsPattern in_map_terrain_pattern = TileSet::TerrainsPattern(*tile_set, p_terrain_set);
-			int neighbor_variant = -1;
 			TileMapCell cell = get_cell(kv.key);
 			if (cell.source_id != TileSet::INVALID_SOURCE) {
 				TileSetSource *source = *tile_set->get_source(cell.source_id);
@@ -3108,12 +3104,11 @@ void TileMapLayer::set_cells_terrain_path(TypedArray<Vector2i> p_path, int p_ter
 					TileData *tile_data = atlas_source->get_tile_data(cell.get_atlas_coords(), cell.alternative_tile);
 					if (tile_data && tile_data->get_terrain_set() == p_terrain_set) {
 						in_map_terrain_pattern = tile_data->get_terrains_pattern();
-						neighbor_variant = tile_data->get_terrain_variant();
 					}
 				}
 			}
 			if (in_map_terrain_pattern != kv.value) {
-				TileMapCell c = tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, neighbor_variant);
+				TileMapCell c = tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, p_variant);
 				set_cell(kv.key, c.source_id, c.get_atlas_coords(), c.alternative_tile);
 			}
 		}

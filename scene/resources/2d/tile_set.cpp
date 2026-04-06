@@ -1504,15 +1504,8 @@ RBSet<TileSet::TerrainsPattern> TileSet::get_terrains_pattern_set(int p_terrain_
 	_update_terrains_cache();
 
 	RBSet<TileSet::TerrainsPattern> output;
-	// Always include the requested variant bucket.
 	if (per_terrain_pattern_tiles[p_terrain_set].has(p_variant)) {
 		for (const KeyValue<TileSet::TerrainsPattern, RBSet<TileMapCell>> &kv : per_terrain_pattern_tiles[p_terrain_set][p_variant]) {
-			output.insert(kv.key);
-		}
-	}
-	// When a specific variant is selected (>= 0), also include untagged (-1) tiles.
-	if (p_variant >= 0 && per_terrain_pattern_tiles[p_terrain_set].has(-1)) {
-		for (const KeyValue<TileSet::TerrainsPattern, RBSet<TileMapCell>> &kv : per_terrain_pattern_tiles[p_terrain_set][-1]) {
 			output.insert(kv.key);
 		}
 	}
@@ -1536,15 +1529,8 @@ RBSet<TileMapCell> TileSet::get_tiles_for_terrains_pattern(int p_terrain_set, Te
 	ERR_FAIL_INDEX_V(p_terrain_set, terrain_sets.size(), RBSet<TileMapCell>());
 	_update_terrains_cache();
 	RBSet<TileMapCell> output;
-	// Include tiles from the requested variant bucket.
 	if (per_terrain_pattern_tiles[p_terrain_set].has(p_variant) && per_terrain_pattern_tiles[p_terrain_set][p_variant].has(p_terrain_tile_pattern)) {
 		for (const TileMapCell &cell : per_terrain_pattern_tiles[p_terrain_set][p_variant][p_terrain_tile_pattern]) {
-			output.insert(cell);
-		}
-	}
-	// When a specific variant is selected (>= 0), also include untagged (-1) tiles.
-	if (p_variant >= 0 && per_terrain_pattern_tiles[p_terrain_set].has(-1) && per_terrain_pattern_tiles[p_terrain_set][-1].has(p_terrain_tile_pattern)) {
-		for (const TileMapCell &cell : per_terrain_pattern_tiles[p_terrain_set][-1][p_terrain_tile_pattern]) {
 			output.insert(cell);
 		}
 	}
@@ -1555,15 +1541,9 @@ TileMapCell TileSet::get_random_tile_from_terrains_pattern(int p_terrain_set, Ti
 	ERR_FAIL_INDEX_V(p_terrain_set, terrain_sets.size(), TileMapCell());
 	_update_terrains_cache();
 
-	// Build the combined tile set: variant bucket + untagged (when variant >= 0).
 	RBSet<TileMapCell> set;
 	if (per_terrain_pattern_tiles[p_terrain_set].has(p_variant) && per_terrain_pattern_tiles[p_terrain_set][p_variant].has(p_terrain_tile_pattern)) {
 		set = per_terrain_pattern_tiles[p_terrain_set][p_variant][p_terrain_tile_pattern];
-	}
-	if (p_variant >= 0 && per_terrain_pattern_tiles[p_terrain_set].has(-1) && per_terrain_pattern_tiles[p_terrain_set][-1].has(p_terrain_tile_pattern)) {
-		for (const TileMapCell &cell : per_terrain_pattern_tiles[p_terrain_set][-1][p_terrain_tile_pattern]) {
-			set.insert(cell);
-		}
 	}
 	if (set.is_empty()) {
 		return TileMapCell();
@@ -6926,7 +6906,6 @@ int TileData::get_terrain() const {
 }
 
 void TileData::set_terrain_variant(int p_variant) {
-	print_line(vformat("set_terrain_variant(%d) CALLED", p_variant));
 	ERR_FAIL_COND(p_variant < -1);
 	if (tile_set && terrain_set >= 0 && terrain >= 0 && p_variant >= 0) {
 		ERR_FAIL_COND(p_variant >= tile_set->get_terrain_variants_count(terrain_set, terrain));
@@ -6946,7 +6925,6 @@ int TileData::get_terrain_variant() const {
 }
 
 void TileData::set_terrain_variants(const PackedInt32Array &p_variants) {
-	print_line(vformat("set_terrain_variants() size=%d", p_variants.size()));
 	terrain_variants = p_variants;
 	emit_signal(CoreStringName(changed));
 }
@@ -6960,24 +6938,13 @@ bool TileData::has_terrain_variant(int p_variant) const {
 }
 
 void TileData::add_terrain_variant_membership(int p_variant) {
-	String before_str;
-	for (int i = 0; i < terrain_variants.size(); i++) {
-		if (i > 0) {
-			before_str += ", ";
-		}
-		before_str += itos(terrain_variants[i]);
-	}
 	if (!terrain_variants.has(p_variant)) {
 		terrain_variants.push_back(p_variant);
-		print_line(vformat("add_terrain_variant_membership(%d) - BEFORE: [%s] -> AFTER size=%d", p_variant, before_str, terrain_variants.size()));
 		emit_signal(CoreStringName(changed));
-	} else {
-		print_line(vformat("add_terrain_variant_membership(%d) - already has it, [%s]", p_variant, before_str));
 	}
 }
 
 void TileData::remove_terrain_variant_membership(int p_variant) {
-	print_line(vformat("remove_terrain_variant_membership(%d) size_before=%d", p_variant, terrain_variants.size()));
 	int idx = terrain_variants.find(p_variant);
 	if (idx >= 0) {
 		terrain_variants.remove_at(idx);

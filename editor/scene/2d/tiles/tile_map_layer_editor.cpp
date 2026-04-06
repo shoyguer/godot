@@ -2528,9 +2528,7 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 		return HashMap<Vector2i, TileMapCell>();
 	}
 
-	// Use the universal pattern set (variant=-1) for pattern computation so that
-	// neighbor cells keep their existing patterns. The variant only controls which
-	// actual tile image is placed for the painted cells.
+	// Compute patterns using all variants. The variant only controls which tile is placed.
 	HashMap<Vector2i, TileSet::TerrainsPattern> terrain_fill_output;
 	if (p_connect) {
 		terrain_fill_output = edited_layer->terrain_fill_connect(p_to_paint, p_terrain_set, p_terrain, false);
@@ -2547,13 +2545,11 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 	HashMap<Vector2i, TileMapCell> output;
 	for (const KeyValue<Vector2i, TileSet::TerrainsPattern> &kv : terrain_fill_output) {
 		if (painted_set.has(kv.key)) {
-			// Paint a random tile with the correct terrain for the painted path.
-			// Use the selected variant so the tile comes from the variant's pool.
+			// Painted cell: pick a tile from the selected variant's pool.
 			_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, p_variant));
 		} else {
-			// Neighbor cell: check if its pattern actually changed.
+			// Neighbor cell: update only if its pattern changed.
 			TileSet::TerrainsPattern in_map_terrain_pattern = TileSet::TerrainsPattern(*tile_set, p_terrain_set);
-			int neighbor_variant = -1;
 			TileMapCell cell = edited_layer->get_cell(kv.key);
 			if (cell.source_id != TileSet::INVALID_SOURCE) {
 				TileSetSource *source = *tile_set->get_source(cell.source_id);
@@ -2562,13 +2558,11 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 					TileData *tile_data = atlas_source->get_tile_data(cell.get_atlas_coords(), cell.alternative_tile);
 					if (tile_data && tile_data->get_terrain_set() == p_terrain_set) {
 						in_map_terrain_pattern = tile_data->get_terrains_pattern();
-						neighbor_variant = tile_data->get_terrain_variant();
 					}
 				}
 			}
 			if (in_map_terrain_pattern != kv.value) {
-				// Neighbor needs updating — preserve its existing variant.
-				_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, neighbor_variant));
+				_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, p_variant));
 			}
 		}
 	}
@@ -2586,7 +2580,7 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 		return HashMap<Vector2i, TileMapCell>();
 	}
 
-	// Use universal pattern set for pattern computation (same reasoning as _draw_terrain_path_or_connect).
+	// Compute patterns using all variants. The variant only controls which tile is placed.
 	HashMap<Vector2i, TileSet::TerrainsPattern> terrain_fill_output = edited_layer->terrain_fill_pattern(p_to_paint, p_terrain_set, p_terrains_pattern, false);
 
 	// Make the painted path a set for faster lookups
@@ -2598,12 +2592,11 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 	HashMap<Vector2i, TileMapCell> output;
 	for (const KeyValue<Vector2i, TileSet::TerrainsPattern> &kv : terrain_fill_output) {
 		if (painted_set.has(kv.key)) {
-			// Paint a random tile with the correct terrain for the painted path (use variant).
+			// Painted cell: pick a tile from the selected variant's pool.
 			_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, p_variant));
 		} else {
-			// Neighbor cell: check if its pattern actually changed.
+			// Neighbor cell: update only if its pattern changed.
 			TileSet::TerrainsPattern in_map_terrain_pattern = TileSet::TerrainsPattern(*tile_set, p_terrain_set);
-			int neighbor_variant = -1;
 			TileMapCell cell = edited_layer->get_cell(kv.key);
 			if (cell.source_id != TileSet::INVALID_SOURCE) {
 				TileSetSource *source = *tile_set->get_source(cell.source_id);
@@ -2612,13 +2605,11 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 					TileData *tile_data = atlas_source->get_tile_data(cell.get_atlas_coords(), cell.alternative_tile);
 					if (tile_data && tile_data->get_terrain_set() == p_terrain_set) {
 						in_map_terrain_pattern = tile_data->get_terrains_pattern();
-						neighbor_variant = tile_data->get_terrain_variant();
 					}
 				}
 			}
 			if (in_map_terrain_pattern != kv.value) {
-				// Neighbor needs updating — preserve its existing variant.
-				_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, neighbor_variant));
+				_add_to_output_if_tile_changed(output, edited_layer, kv.key, tile_set->get_random_tile_from_terrains_pattern(p_terrain_set, kv.value, p_variant));
 			}
 		}
 	}
@@ -3158,9 +3149,8 @@ void TileMapLayerEditorTerrainsPlugin::forward_canvas_draw_over_viewport(Control
 	Vector2i tile_shape_size = tile_set->get_tile_size();
 	bool drawing_rect = false;
 
-	// Dim cells whose variant doesn't match the selected variant.
-	// Also dim when untagged is selected and variant tiles exist (so the user can
-	// distinguish untagged from variant-assigned tiles on the map).
+	// Dim cells whose variant does not match the selected one.
+	// When untagged is selected, dim variant tiles to distinguish them.
 	bool has_variants = selected_terrain_set >= 0 && selected_terrain >= 0 &&
 			tile_set->get_terrain_variants_count(selected_terrain_set, selected_terrain) > 0;
 	if (selected_terrain_set >= 0 && (selected_variant >= 0 || has_variants)) {
@@ -3433,11 +3423,11 @@ void TileMapLayerEditorTerrainsPlugin::_update_terrains_tree() {
 
 			int variant_count = tile_set->get_terrain_variants_count(terrain_set_index, terrain_index);
 			if (variant_count > 0) {
-				// When variants exist, the terrain item itself becomes unselectable;
-				// the user selects a specific variant (or "Untagged") child instead.
+				// With variants, the terrain item is unselectable.
+				// The user picks a variant or "Untagged" child instead.
 				terrain_tree_item->set_selectable(0, false);
 
-				// "Untagged" child — variant_id = -1, uses slot 0 of variant_icons.
+				// "Untagged" child: variant_id = -1, uses slot 0 of variant_icons.
 				TreeItem *untagged_item = terrains_tree->create_item(terrain_tree_item);
 				untagged_item->set_text(0, TTR("Untagged"));
 				untagged_item->set_icon_max_width(0, 32 * EDSCALE);
