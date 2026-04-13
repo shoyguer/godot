@@ -2528,12 +2528,11 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 		return HashMap<Vector2i, TileMapCell>();
 	}
 
-	// Compute patterns using all variants. The variant only controls which tile is placed.
 	HashMap<Vector2i, TileSet::TerrainsPattern> terrain_fill_output;
 	if (p_connect) {
-		terrain_fill_output = edited_layer->terrain_fill_connect(p_to_paint, p_terrain_set, p_terrain, false);
+		terrain_fill_output = edited_layer->terrain_fill_connect(p_to_paint, p_terrain_set, p_terrain, false, p_variant);
 	} else {
-		terrain_fill_output = edited_layer->terrain_fill_path(p_to_paint, p_terrain_set, p_terrain, false);
+		terrain_fill_output = edited_layer->terrain_fill_path(p_to_paint, p_terrain_set, p_terrain, false, p_variant);
 	}
 
 	// Make the painted path a set for faster lookups
@@ -2580,8 +2579,7 @@ HashMap<Vector2i, TileMapCell> TileMapLayerEditorTerrainsPlugin::_draw_terrain_p
 		return HashMap<Vector2i, TileMapCell>();
 	}
 
-	// Compute patterns using all variants. The variant only controls which tile is placed.
-	HashMap<Vector2i, TileSet::TerrainsPattern> terrain_fill_output = edited_layer->terrain_fill_pattern(p_to_paint, p_terrain_set, p_terrains_pattern, false);
+	HashMap<Vector2i, TileSet::TerrainsPattern> terrain_fill_output = edited_layer->terrain_fill_pattern(p_to_paint, p_terrain_set, p_terrains_pattern, false, p_variant);
 
 	// Make the painted path a set for faster lookups
 	HashSet<Vector2i> painted_set;
