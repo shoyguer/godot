@@ -1852,10 +1852,9 @@ TileSet::TerrainsPattern TileMapLayer::_get_best_terrain_pattern_for_constraints
 	if (tile_set.is_null()) {
 		return TileSet::TerrainsPattern();
 	}
-	// Use the combined pattern set so the solver considers all variants.
-	// The variant only controls which tile is picked later.
+	// Only consider patterns the selected variant has tiles for.
 	RBMap<TileSet::TerrainsPattern, int> terrain_pattern_score;
-	RBSet<TileSet::TerrainsPattern> pattern_set = tile_set->get_terrains_pattern_set_combined(p_terrain_set);
+	RBSet<TileSet::TerrainsPattern> pattern_set = tile_set->get_terrains_pattern_set(p_terrain_set, p_variant);
 	if (pattern_set.is_empty()) {
 		return p_current_pattern;
 	}
