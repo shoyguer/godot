@@ -1536,7 +1536,7 @@ void ProjectExportDialog::_bind_methods() {
 }
 
 ProjectExportDialog::ProjectExportDialog() {
-	set_title(TTR("Export With Godot Secure (AES-256)"));
+set_title(TTR("Export With Godot Secure (AES-256)"));
 	set_flag(FLAG_MAXIMIZE_DISABLED, false);
 	set_clamp_to_embedder(true);
 

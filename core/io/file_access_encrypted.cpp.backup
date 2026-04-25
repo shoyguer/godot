@@ -99,20 +99,20 @@ Error FileAccessEncrypted::open_and_parse(Ref<FileAccess> p_base, const Vector<u
 		uint64_t blen = p_base->get_buffer(data.ptrw(), ds);
 		ERR_FAIL_COND_V(blen != ds, ERR_FILE_CORRUPT);
 
-		{
-			CryptoCore::AESContext ctx;
+{
+CryptoCore::AESContext ctx;
 
-			// Apply security token to key
-			Vector<uint8_t> token_key;
-			token_key.resize(32);
-			const uint8_t *key_ptr = key.ptr();
-			for (int i = 0; i < 32; i++) {
-				token_key.write[i] = key_ptr[i] ^ Security::TOKEN[i];
-			}
+    // Apply security token to key
+    Vector<uint8_t> token_key;
+    token_key.resize(32);
+    const uint8_t *key_ptr = key.ptr();
+    for (int i = 0; i < 32; i++) {
+        token_key.write[i] = key_ptr[i] ^ Security::TOKEN[i];
+    }
 
-			ctx.set_encode_key(token_key.ptrw(), 256); // Due to the nature of CFB, same key schedule is used for both encryption and decryption!
-			ctx.decrypt_cfb(ds, iv.ptrw(), data.ptrw(), data.ptrw());
-		}
+    ctx.set_encode_key(token_key.ptrw(), 256); // Due to the nature of CFB, same key schedule is used for both encryption and decryption!
+    ctx.decrypt_cfb(ds, iv.ptrw(), data.ptrw(), data.ptrw());
+}
 
 		data.resize(length);
 
@@ -162,27 +162,27 @@ void FileAccessEncrypted::_close() {
 		memcpy(compressed.ptr(), data.ptr(), data.size());
 		memset(compressed.ptr() + data.size(), 0, len - data.size());
 
-		CryptoCore::AESContext ctx;
+CryptoCore::AESContext ctx;
 
-		// Apply security token to key
-		Vector<uint8_t> token_key;
-		token_key.resize(32);
-		const uint8_t *key_ptr = key.ptr();
-		for (int i = 0; i < 32; i++) {
-			token_key.write[i] = key_ptr[i] ^ Security::TOKEN[i];
-		}
+    // Apply security token to key
+    Vector<uint8_t> token_key;
+    token_key.resize(32);
+    const uint8_t *key_ptr = key.ptr();
+    for (int i = 0; i < 32; i++) {
+        token_key.write[i] = key_ptr[i] ^ Security::TOKEN[i];
+    }
 
-		ctx.set_encode_key(token_key.ptrw(), 256);
+    ctx.set_encode_key(token_key.ptrw(), 256);
 
-		if (use_magic) {
-			file->store_32(ENCRYPTED_HEADER_MAGIC);
-		}
+if (use_magic) {
+file->store_32(ENCRYPTED_HEADER_MAGIC);
+}
 
-		file->store_buffer(hash, 16);
-		file->store_64(data.size());
-		file->store_buffer(iv.ptr(), 16);
+file->store_buffer(hash, 16);
+file->store_64(data.size());
+file->store_buffer(iv.ptr(), 16);
 
-		ctx.encrypt_cfb(len, iv.ptrw(), compressed.ptr(), compressed.ptr());
+ctx.encrypt_cfb(len, iv.ptrw(), compressed.ptr(), compressed.ptr());
 
 		file->store_buffer(compressed.ptr(), compressed.size());
 		data.clear();

@@ -33,7 +33,7 @@
 #include "core/crypto/crypto_core.h"
 #include "core/io/file_access.h"
 
-#define ENCRYPTED_HEADER_MAGIC 0x4F51455A // Generated Tag: "ZEQO"
+#define ENCRYPTED_HEADER_MAGIC 0x4F51455A  // Generated Tag: "ZEQO"
 
 class FileAccessEncrypted : public FileAccess {
 	GDSOFTCLASS(FileAccessEncrypted, FileAccess);
