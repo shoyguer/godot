@@ -745,7 +745,11 @@ void EditorBuildProfileManager::_notification(int p_what) {
 				edited.instantiate();
 				_update_edited_profile();
 			}
+		} break;
 
+		case NOTIFICATION_TRANSLATION_CHANGED: {
+			// Update `EditorHelpBit` in case it contains custom text.
+			_class_list_item_selected();
 		} break;
 	}
 }
@@ -1429,6 +1433,7 @@ EditorBuildProfileManager::EditorBuildProfileManager() {
 	main_vbc->add_margin_child(TTRC("Description:"), description_bit, false);
 
 	confirm_dialog = memnew(ConfirmationDialog);
+	confirm_dialog->set_flag(Window::FLAG_RESIZE_DISABLED, true);
 	add_child(confirm_dialog);
 	confirm_dialog->set_title(TTRC("Please Confirm:"));
 	confirm_dialog->set_autowrap(true);

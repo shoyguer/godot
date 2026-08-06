@@ -414,6 +414,10 @@ protected:
 	void _validate_property(PropertyInfo &p_property) const;
 	virtual String _to_string() override;
 
+	// Localization
+
+	virtual StringName _get_translation_context_with_override(const StringName &p_context) const { return p_context; }
+
 	Variant _get_node_rpc_config_bind() const {
 		return get_node_rpc_config().duplicate(true);
 	}
@@ -487,6 +491,7 @@ public:
 		NOTIFICATION_VP_MOUSE_ENTER = 1010,
 		NOTIFICATION_VP_MOUSE_EXIT = 1011,
 		NOTIFICATION_WM_POSITION_CHANGED = 1012,
+		NOTIFICATION_WM_OUTPUT_MAX_LINEAR_VALUE_CHANGED = 1013,
 
 		// Keep these in sync with MainLoop.
 		NOTIFICATION_OS_MEMORY_WARNING = 2009,
@@ -502,7 +507,10 @@ public:
 		NOTIFICATION_APPLICATION_PIP_MODE_ENTERED = 2019,
 		NOTIFICATION_APPLICATION_PIP_MODE_EXITED = 2020,
 
-		// Editor specific node notifications
+		// Debug-related notifications.
+		NOTIFICATION_DEBUG_COLLISIONS_HINT_CHANGED = 4000,
+
+		// Editor specific node notifications.
 		NOTIFICATION_EDITOR_PRE_SAVE = 9001,
 		NOTIFICATION_EDITOR_POST_SAVE = 9002,
 		NOTIFICATION_SUSPENDED = 9003,
@@ -512,7 +520,7 @@ public:
 	/* NODE/TREE */
 
 	StringName get_name() const;
-	String get_description() const;
+	String get_description(bool p_show_not_in_tree = false) const;
 	void set_name(const StringName &p_name);
 
 	InternalMode get_internal_mode() const;
@@ -720,6 +728,7 @@ public:
 	virtual RID get_accessibility_element() const;
 	virtual RID get_focused_accessibility_element() const;
 	virtual bool accessibility_override_tree_hierarchy() const { return false; }
+	virtual Transform2D get_accessibility_transform() const;
 
 	virtual PackedStringArray get_accessibility_configuration_warnings() const;
 
@@ -825,10 +834,12 @@ public:
 	virtual void set_translation_domain(const StringName &p_domain) override;
 	void set_translation_domain_inherited();
 
-	_FORCE_INLINE_ String atr(const String &p_message, const StringName &p_context = "") const { return can_auto_translate() ? tr(p_message, p_context) : p_message; }
+	_FORCE_INLINE_ String atr(const String &p_message, const StringName &p_context = "") const {
+		return can_auto_translate() ? tr(p_message, _get_translation_context_with_override(p_context)) : p_message;
+	}
 	_FORCE_INLINE_ String atr_n(const String &p_message, const StringName &p_message_plural, int p_n, const StringName &p_context = "") const {
 		if (can_auto_translate()) {
-			return tr_n(p_message, p_message_plural, p_n, p_context);
+			return tr_n(p_message, p_message_plural, p_n, _get_translation_context_with_override(p_context));
 		}
 		return p_n == 1 ? p_message : String(p_message_plural);
 	}
