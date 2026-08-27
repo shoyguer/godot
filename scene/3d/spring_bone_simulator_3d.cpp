@@ -35,6 +35,7 @@
 #include "core/object/callable_mp.h"
 #include "core/object/class_db.h"
 #include "scene/3d/spring_bone_collision_3d.h"
+#include "scene/3d/spring_bone_settings.h"
 
 // Original VRM Spring Bone movement logic was distributed by (c) VRM Consortium. Licensed under the MIT license.
 
@@ -73,6 +74,8 @@ bool SpringBoneSimulator3D::_set(const StringName &p_path, const Variant &p_valu
 			set_center_bone(which, p_value);
 		} else if (what == "center_bone_name") {
 			set_center_bone_name(which, p_value);
+		} else if (what == "spring_bone_settings") {
+			set_spring_bone_settings(which, p_value);
 		} else if (what == "individual_config") {
 			set_individual_config(which, p_value);
 		} else if (what == "rotation_axis") {
@@ -80,40 +83,52 @@ bool SpringBoneSimulator3D::_set(const StringName &p_path, const Variant &p_valu
 		} else if (what == "rotation_axis_vector") {
 			set_rotation_axis_vector(which, p_value);
 		} else if (what == "radius") {
+			// Compatibility: old per-chain physics are migrated into SpringBoneSettings.
 			String opt = path.get_slicec('/', 3);
+			_ensure_spring_bone_settings(which);
+			_queue_share_identical_migrated_settings();
 			if (opt == "value") {
-				set_radius(which, p_value);
+				settings[which]->spring_bone_settings->set_radius(p_value);
 			} else if (opt == "damping_curve") {
-				set_radius_damping_curve(which, p_value);
+				settings[which]->spring_bone_settings->set_radius_damping_curve(p_value);
 			} else {
 				return false;
 			}
 		} else if (what == "stiffness") {
 			String opt = path.get_slicec('/', 3);
+			_ensure_spring_bone_settings(which);
+			_queue_share_identical_migrated_settings();
 			if (opt == "value") {
-				set_stiffness(which, p_value);
+				settings[which]->spring_bone_settings->set_stiffness(p_value);
 			} else if (opt == "damping_curve") {
-				set_stiffness_damping_curve(which, p_value);
+				settings[which]->spring_bone_settings->set_stiffness_damping_curve(p_value);
 			} else {
 				return false;
 			}
 		} else if (what == "drag") {
 			String opt = path.get_slicec('/', 3);
+			_ensure_spring_bone_settings(which);
+			_queue_share_identical_migrated_settings();
 			if (opt == "value") {
-				set_drag(which, p_value);
+				settings[which]->spring_bone_settings->set_drag(p_value);
 			} else if (opt == "damping_curve") {
-				set_drag_damping_curve(which, p_value);
+				settings[which]->spring_bone_settings->set_drag_damping_curve(p_value);
 			} else {
 				return false;
 			}
 		} else if (what == "gravity") {
 			String opt = path.get_slicec('/', 3);
+			_ensure_spring_bone_settings(which);
+			_queue_share_identical_migrated_settings();
 			if (opt == "value") {
-				set_gravity(which, p_value);
+				settings[which]->spring_bone_settings->set_gravity(p_value);
 			} else if (opt == "damping_curve") {
-				set_gravity_damping_curve(which, p_value);
+				settings[which]->spring_bone_settings->set_gravity_damping_curve(p_value);
 			} else if (opt == "direction") {
-				set_gravity_direction(which, p_value);
+				Vector3 dir = p_value;
+				if (!dir.is_zero_approx()) {
+					settings[which]->spring_bone_settings->set_gravity_direction(dir);
+				}
 			} else {
 				return false;
 			}
@@ -193,6 +208,8 @@ bool SpringBoneSimulator3D::_get(const StringName &p_path, Variant &r_ret) const
 			r_ret = get_center_bone(which);
 		} else if (what == "center_bone_name") {
 			r_ret = get_center_bone_name(which);
+		} else if (what == "spring_bone_settings") {
+			r_ret = get_spring_bone_settings(which);
 		} else if (what == "individual_config") {
 			r_ret = is_config_individual(which);
 		} else if (what == "rotation_axis") {
@@ -305,17 +322,9 @@ void SpringBoneSimulator3D::_get_property_list(List<PropertyInfo> *p_list) const
 		props.push_back(PropertyInfo(Variant::STRING, path + "center_bone_name", PROPERTY_HINT_ENUM_SUGGESTION, enum_hint));
 		props.push_back(PropertyInfo(Variant::INT, path + "center_bone", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_NO_EDITOR));
 		props.push_back(PropertyInfo(Variant::BOOL, path + "individual_config"));
+		props.push_back(PropertyInfo(Variant::OBJECT, path + "spring_bone_settings", PROPERTY_HINT_RESOURCE_TYPE, SpringBoneSettings::get_class_static()));
 		props.push_back(PropertyInfo(Variant::INT, path + "rotation_axis", PROPERTY_HINT_ENUM, SkeletonModifier3D::get_hint_rotation_axis()));
 		props.push_back(PropertyInfo(Variant::VECTOR3, path + "rotation_axis_vector"));
-		props.push_back(PropertyInfo(Variant::FLOAT, path + "radius/value", PROPERTY_HINT_RANGE, "0,1,0.001,or_greater,suffix:m"));
-		props.push_back(PropertyInfo(Variant::OBJECT, path + "radius/damping_curve", PROPERTY_HINT_RESOURCE_TYPE, Curve::get_class_static()));
-		props.push_back(PropertyInfo(Variant::FLOAT, path + "stiffness/value", PROPERTY_HINT_RANGE, "0,4,0.01,or_greater"));
-		props.push_back(PropertyInfo(Variant::OBJECT, path + "stiffness/damping_curve", PROPERTY_HINT_RESOURCE_TYPE, Curve::get_class_static()));
-		props.push_back(PropertyInfo(Variant::FLOAT, path + "drag/value", PROPERTY_HINT_RANGE, "0,1,0.01,or_greater"));
-		props.push_back(PropertyInfo(Variant::OBJECT, path + "drag/damping_curve", PROPERTY_HINT_RESOURCE_TYPE, Curve::get_class_static()));
-		props.push_back(PropertyInfo(Variant::FLOAT, path + "gravity/value", PROPERTY_HINT_RANGE, "0,1,0.01,or_greater,or_less,suffix:m/s"));
-		props.push_back(PropertyInfo(Variant::OBJECT, path + "gravity/damping_curve", PROPERTY_HINT_RESOURCE_TYPE, Curve::get_class_static()));
-		props.push_back(PropertyInfo(Variant::VECTOR3, path + "gravity/direction"));
 		props.push_back(PropertyInfo(Variant::INT, path + "joint_count", PROPERTY_HINT_NONE, "", PROPERTY_USAGE_DEFAULT | PROPERTY_USAGE_ARRAY, "Joints," + path + "joints/,static,const"));
 		for (uint32_t j = 0; j < settings[i]->joints.size(); j++) {
 			String joint_path = path + "joints/" + itos(j) + "/";
@@ -373,10 +382,7 @@ void SpringBoneSimulator3D::_validate_dynamic_prop(PropertyInfo &p_property) con
 
 		// Joints option.
 		if (is_config_individual(which)) {
-			if (split[2] == "rotation_axis" || split[2] == "rotation_axis_vector" || split[2] == "radius" || split[2] == "radius_damping_curve" ||
-					split[2] == "stiffness" || split[2] == "stiffness_damping_curve" ||
-					split[2] == "drag" || split[2] == "drag_damping_curve" ||
-					split[2] == "gravity" || split[2] == "gravity_damping_curve" || split[2] == "gravity_direction") {
+			if (split[2] == "rotation_axis" || split[2] == "rotation_axis_vector") {
 				p_property.usage = PROPERTY_USAGE_NONE;
 			}
 		} else {
@@ -645,18 +651,81 @@ int SpringBoneSimulator3D::get_center_bone(int p_index) const {
 	return settings[p_index]->center_bone;
 }
 
+void SpringBoneSimulator3D::_connect_spring_bone_settings(int p_index) {
+	ERR_FAIL_INDEX(p_index, (int)settings.size());
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		// CONNECT_REFERENCE_COUNTED: several chains may share one resource. Signal
+		// identity ignores Callable binds, so we cannot connect once per index.
+		settings[p_index]->spring_bone_settings->connect_changed(callable_mp(this, &SpringBoneSimulator3D::_spring_bone_settings_changed), CONNECT_REFERENCE_COUNTED);
+	}
+}
+
+void SpringBoneSimulator3D::_ensure_spring_bone_settings(int p_index) {
+	ERR_FAIL_INDEX(p_index, (int)settings.size());
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		return;
+	}
+	settings[p_index]->spring_bone_settings.instantiate();
+	_connect_spring_bone_settings(p_index);
+}
+
+void SpringBoneSimulator3D::_queue_share_identical_migrated_settings() {
+	if (spring_bone_settings_share_queued) {
+		return;
+	}
+	spring_bone_settings_share_queued = true;
+	callable_mp(this, &SpringBoneSimulator3D::_share_identical_migrated_settings).call_deferred();
+}
+
+void SpringBoneSimulator3D::_share_identical_migrated_settings() {
+	spring_bone_settings_share_queued = false;
+
+	const int count = (int)settings.size();
+	for (int i = 0; i < count; i++) {
+		_ensure_spring_bone_settings(i);
+	}
+
+	bool shared_any = false;
+	for (int i = 0; i < count; i++) {
+		const Ref<SpringBoneSettings> canonical = settings[i]->spring_bone_settings;
+		if (canonical.is_null()) {
+			continue;
+		}
+		for (int j = i + 1; j < count; j++) {
+			const Ref<SpringBoneSettings> other = settings[j]->spring_bone_settings;
+			if (other.is_null() || other == canonical) {
+				continue;
+			}
+			if (!canonical->is_equal_to(other)) {
+				continue;
+			}
+			_disconnect_spring_bone_settings(j);
+			settings[j]->spring_bone_settings = canonical;
+			_connect_spring_bone_settings(j);
+			shared_any = true;
+		}
+	}
+
+	if (shared_any) {
+		notify_property_list_changed();
+	}
+}
+
 void SpringBoneSimulator3D::set_radius(int p_index, float p_radius) {
 	ERR_FAIL_INDEX(p_index, (int)settings.size());
 	if (is_config_individual(p_index)) {
 		return; // Joint config is individual mode.
 	}
-	settings[p_index]->radius = p_radius;
-	_make_joints_dirty(p_index);
+	_ensure_spring_bone_settings(p_index);
+	settings[p_index]->spring_bone_settings->set_radius(p_radius);
 }
 
 float SpringBoneSimulator3D::get_radius(int p_index) const {
-	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), 0);
-	return settings[p_index]->radius;
+	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), 0.02);
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		return settings[p_index]->spring_bone_settings->get_radius();
+	}
+	return 0.02;
 }
 
 void SpringBoneSimulator3D::set_radius_damping_curve(int p_index, const Ref<Curve> &p_damping_curve) {
@@ -664,19 +733,16 @@ void SpringBoneSimulator3D::set_radius_damping_curve(int p_index, const Ref<Curv
 	if (is_config_individual(p_index)) {
 		return; // Joint config is individual mode.
 	}
-	if (settings[p_index]->radius_damping_curve.is_valid()) {
-		settings[p_index]->radius_damping_curve->disconnect_changed(callable_mp(this, &SpringBoneSimulator3D::_make_joints_dirty));
-	}
-	settings[p_index]->radius_damping_curve = p_damping_curve;
-	if (settings[p_index]->radius_damping_curve.is_valid()) {
-		settings[p_index]->radius_damping_curve->connect_changed(callable_mp(this, &SpringBoneSimulator3D::_make_joints_dirty).bind(p_index, false));
-	}
-	_make_joints_dirty(p_index);
+	_ensure_spring_bone_settings(p_index);
+	settings[p_index]->spring_bone_settings->set_radius_damping_curve(p_damping_curve);
 }
 
 Ref<Curve> SpringBoneSimulator3D::get_radius_damping_curve(int p_index) const {
 	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), Ref<Curve>());
-	return settings[p_index]->radius_damping_curve;
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		return settings[p_index]->spring_bone_settings->get_radius_damping_curve();
+	}
+	return Ref<Curve>();
 }
 
 void SpringBoneSimulator3D::set_stiffness(int p_index, float p_stiffness) {
@@ -684,13 +750,16 @@ void SpringBoneSimulator3D::set_stiffness(int p_index, float p_stiffness) {
 	if (is_config_individual(p_index)) {
 		return; // Joint config is individual mode.
 	}
-	settings[p_index]->stiffness = p_stiffness;
-	_make_joints_dirty(p_index);
+	_ensure_spring_bone_settings(p_index);
+	settings[p_index]->spring_bone_settings->set_stiffness(p_stiffness);
 }
 
 float SpringBoneSimulator3D::get_stiffness(int p_index) const {
-	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), 0);
-	return settings[p_index]->stiffness;
+	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), 1.0);
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		return settings[p_index]->spring_bone_settings->get_stiffness();
+	}
+	return 1.0;
 }
 
 void SpringBoneSimulator3D::set_stiffness_damping_curve(int p_index, const Ref<Curve> &p_damping_curve) {
@@ -698,19 +767,16 @@ void SpringBoneSimulator3D::set_stiffness_damping_curve(int p_index, const Ref<C
 	if (is_config_individual(p_index)) {
 		return; // Joint config is individual mode.
 	}
-	if (settings[p_index]->stiffness_damping_curve.is_valid()) {
-		settings[p_index]->stiffness_damping_curve->disconnect_changed(callable_mp(this, &SpringBoneSimulator3D::_make_joints_dirty));
-	}
-	settings[p_index]->stiffness_damping_curve = p_damping_curve;
-	if (settings[p_index]->stiffness_damping_curve.is_valid()) {
-		settings[p_index]->stiffness_damping_curve->connect_changed(callable_mp(this, &SpringBoneSimulator3D::_make_joints_dirty).bind(p_index, false));
-	}
-	_make_joints_dirty(p_index);
+	_ensure_spring_bone_settings(p_index);
+	settings[p_index]->spring_bone_settings->set_stiffness_damping_curve(p_damping_curve);
 }
 
 Ref<Curve> SpringBoneSimulator3D::get_stiffness_damping_curve(int p_index) const {
 	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), Ref<Curve>());
-	return settings[p_index]->stiffness_damping_curve;
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		return settings[p_index]->spring_bone_settings->get_stiffness_damping_curve();
+	}
+	return Ref<Curve>();
 }
 
 void SpringBoneSimulator3D::set_drag(int p_index, float p_drag) {
@@ -718,13 +784,16 @@ void SpringBoneSimulator3D::set_drag(int p_index, float p_drag) {
 	if (is_config_individual(p_index)) {
 		return; // Joint config is individual mode.
 	}
-	settings[p_index]->drag = p_drag;
-	_make_joints_dirty(p_index);
+	_ensure_spring_bone_settings(p_index);
+	settings[p_index]->spring_bone_settings->set_drag(p_drag);
 }
 
 float SpringBoneSimulator3D::get_drag(int p_index) const {
-	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), 0);
-	return settings[p_index]->drag;
+	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), 0.4);
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		return settings[p_index]->spring_bone_settings->get_drag();
+	}
+	return 0.4;
 }
 
 void SpringBoneSimulator3D::set_drag_damping_curve(int p_index, const Ref<Curve> &p_damping_curve) {
@@ -732,19 +801,16 @@ void SpringBoneSimulator3D::set_drag_damping_curve(int p_index, const Ref<Curve>
 	if (is_config_individual(p_index)) {
 		return; // Joint config is individual mode.
 	}
-	if (settings[p_index]->drag_damping_curve.is_valid()) {
-		settings[p_index]->drag_damping_curve->disconnect_changed(callable_mp(this, &SpringBoneSimulator3D::_make_joints_dirty));
-	}
-	settings[p_index]->drag_damping_curve = p_damping_curve;
-	if (settings[p_index]->drag_damping_curve.is_valid()) {
-		settings[p_index]->drag_damping_curve->connect_changed(callable_mp(this, &SpringBoneSimulator3D::_make_joints_dirty).bind(p_index, false));
-	}
-	_make_joints_dirty(p_index);
+	_ensure_spring_bone_settings(p_index);
+	settings[p_index]->spring_bone_settings->set_drag_damping_curve(p_damping_curve);
 }
 
 Ref<Curve> SpringBoneSimulator3D::get_drag_damping_curve(int p_index) const {
 	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), Ref<Curve>());
-	return settings[p_index]->drag_damping_curve;
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		return settings[p_index]->spring_bone_settings->get_drag_damping_curve();
+	}
+	return Ref<Curve>();
 }
 
 void SpringBoneSimulator3D::set_gravity(int p_index, float p_gravity) {
@@ -752,13 +818,16 @@ void SpringBoneSimulator3D::set_gravity(int p_index, float p_gravity) {
 	if (is_config_individual(p_index)) {
 		return; // Joint config is individual mode.
 	}
-	settings[p_index]->gravity = p_gravity;
-	_make_joints_dirty(p_index);
+	_ensure_spring_bone_settings(p_index);
+	settings[p_index]->spring_bone_settings->set_gravity(p_gravity);
 }
 
 float SpringBoneSimulator3D::get_gravity(int p_index) const {
 	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), 0);
-	return settings[p_index]->gravity;
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		return settings[p_index]->spring_bone_settings->get_gravity();
+	}
+	return 0;
 }
 
 void SpringBoneSimulator3D::set_gravity_damping_curve(int p_index, const Ref<Curve> &p_damping_curve) {
@@ -766,19 +835,16 @@ void SpringBoneSimulator3D::set_gravity_damping_curve(int p_index, const Ref<Cur
 	if (is_config_individual(p_index)) {
 		return; // Joint config is individual mode.
 	}
-	if (settings[p_index]->gravity_damping_curve.is_valid()) {
-		settings[p_index]->gravity_damping_curve->disconnect_changed(callable_mp(this, &SpringBoneSimulator3D::_make_joints_dirty));
-	}
-	settings[p_index]->gravity_damping_curve = p_damping_curve;
-	if (settings[p_index]->gravity_damping_curve.is_valid()) {
-		settings[p_index]->gravity_damping_curve->connect_changed(callable_mp(this, &SpringBoneSimulator3D::_make_joints_dirty).bind(p_index, false));
-	}
-	_make_joints_dirty(p_index);
+	_ensure_spring_bone_settings(p_index);
+	settings[p_index]->spring_bone_settings->set_gravity_damping_curve(p_damping_curve);
 }
 
 Ref<Curve> SpringBoneSimulator3D::get_gravity_damping_curve(int p_index) const {
 	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), Ref<Curve>());
-	return settings[p_index]->gravity_damping_curve;
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		return settings[p_index]->spring_bone_settings->get_gravity_damping_curve();
+	}
+	return Ref<Curve>();
 }
 
 void SpringBoneSimulator3D::set_gravity_direction(int p_index, const Vector3 &p_gravity_direction) {
@@ -787,13 +853,54 @@ void SpringBoneSimulator3D::set_gravity_direction(int p_index, const Vector3 &p_
 	if (is_config_individual(p_index)) {
 		return; // Joint config is individual mode.
 	}
-	settings[p_index]->gravity_direction = p_gravity_direction;
-	_make_joints_dirty(p_index);
+	_ensure_spring_bone_settings(p_index);
+	settings[p_index]->spring_bone_settings->set_gravity_direction(p_gravity_direction);
 }
 
 Vector3 SpringBoneSimulator3D::get_gravity_direction(int p_index) const {
 	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), Vector3(0, -1, 0));
-	return settings[p_index]->gravity_direction;
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		return settings[p_index]->spring_bone_settings->get_gravity_direction();
+	}
+	return Vector3(0, -1, 0);
+}
+
+void SpringBoneSimulator3D::_disconnect_spring_bone_settings(int p_index) {
+	ERR_FAIL_INDEX(p_index, (int)settings.size());
+	if (settings[p_index]->spring_bone_settings.is_valid()) {
+		settings[p_index]->spring_bone_settings->disconnect_changed(callable_mp(this, &SpringBoneSimulator3D::_spring_bone_settings_changed));
+	}
+}
+
+void SpringBoneSimulator3D::_spring_bone_settings_changed() {
+	// Resource::changed does not pass the emitter, and binds cannot distinguish
+	// connections from this object. Recache every chain so shared settings
+	// (including nested curves) update all gizmos and simulation caches.
+	for (uint32_t i = 0; i < settings.size(); i++) {
+		_make_joints_dirty(i, false);
+	}
+}
+
+void SpringBoneSimulator3D::set_spring_bone_settings(int p_index, const Ref<SpringBoneSettings> &p_settings) {
+	ERR_FAIL_INDEX(p_index, (int)settings.size());
+	Ref<SpringBoneSettings> new_settings = p_settings;
+	if (new_settings.is_null()) {
+		new_settings.instantiate();
+	}
+	if (settings[p_index]->spring_bone_settings == new_settings) {
+		return;
+	}
+
+	_disconnect_spring_bone_settings(p_index);
+	settings[p_index]->spring_bone_settings = new_settings;
+	_connect_spring_bone_settings(p_index);
+	_make_joints_dirty(p_index);
+	notify_property_list_changed();
+}
+
+Ref<SpringBoneSettings> SpringBoneSimulator3D::get_spring_bone_settings(int p_index) const {
+	ERR_FAIL_INDEX_V(p_index, (int)settings.size(), Ref<SpringBoneSettings>());
+	return settings[p_index]->spring_bone_settings;
 }
 
 void SpringBoneSimulator3D::set_rotation_axis(int p_index, RotationAxis p_axis) {
@@ -849,15 +956,19 @@ void SpringBoneSimulator3D::set_setting_count(int p_count) {
 	int delta = p_count - (int)settings.size();
 	if (delta < 0) {
 		for (int i = delta; i < 0; i++) {
-			memdelete(settings[(int)settings.size() + i]);
-			settings[(int)settings.size() + i] = nullptr;
+			int idx = (int)settings.size() + i;
+			_disconnect_spring_bone_settings(idx);
+			memdelete(settings[idx]);
+			settings[idx] = nullptr;
 		}
 	}
 	settings.resize(p_count);
 	delta++;
 	if (delta > 1) {
 		for (int i = 1; i < delta; i++) {
-			settings[p_count - i] = memnew(SpringBone3DSetting);
+			int idx = p_count - i;
+			settings[idx] = memnew(SpringBone3DSetting);
+			_ensure_spring_bone_settings(idx);
 		}
 	}
 	notify_property_list_changed();
@@ -1285,6 +1396,9 @@ void SpringBoneSimulator3D::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("set_gravity_direction", "index", "gravity_direction"), &SpringBoneSimulator3D::set_gravity_direction);
 	ClassDB::bind_method(D_METHOD("get_gravity_direction", "index"), &SpringBoneSimulator3D::get_gravity_direction);
 
+	ClassDB::bind_method(D_METHOD("set_spring_bone_settings", "index", "settings"), &SpringBoneSimulator3D::set_spring_bone_settings);
+	ClassDB::bind_method(D_METHOD("get_spring_bone_settings", "index"), &SpringBoneSimulator3D::get_spring_bone_settings);
+
 	ClassDB::bind_method(D_METHOD("set_setting_count", "count"), &SpringBoneSimulator3D::set_setting_count);
 	ClassDB::bind_method(D_METHOD("get_setting_count"), &SpringBoneSimulator3D::get_setting_count);
 	ClassDB::bind_method(D_METHOD("clear_settings"), &SpringBoneSimulator3D::clear_settings);
@@ -1579,34 +1693,43 @@ void SpringBoneSimulator3D::_update_joints(bool p_reset) {
 		}
 		LocalVector<SpringBone3DJointSetting *> &joints = settings[i]->joints;
 		float unit = joints.size() > 0 ? (1.0 / float(joints.size() - 1)) : 0.0;
+		const float radius = get_radius(i);
+		const Ref<Curve> radius_curve = get_radius_damping_curve(i);
+		const float stiffness = get_stiffness(i);
+		const Ref<Curve> stiffness_curve = get_stiffness_damping_curve(i);
+		const float drag = get_drag(i);
+		const Ref<Curve> drag_curve = get_drag_damping_curve(i);
+		const float gravity = get_gravity(i);
+		const Ref<Curve> gravity_curve = get_gravity_damping_curve(i);
+		const Vector3 gravity_direction = get_gravity_direction(i);
 		for (uint32_t j = 0; j < joints.size(); j++) {
 			float offset = j * unit;
 
-			if (settings[i]->radius_damping_curve.is_valid()) {
-				joints[j]->radius = settings[i]->radius * settings[i]->radius_damping_curve->sample_baked(offset);
+			if (radius_curve.is_valid()) {
+				joints[j]->radius = radius * radius_curve->sample_baked(offset);
 			} else {
-				joints[j]->radius = settings[i]->radius;
+				joints[j]->radius = radius;
 			}
 
-			if (settings[i]->stiffness_damping_curve.is_valid()) {
-				joints[j]->stiffness = settings[i]->stiffness * settings[i]->stiffness_damping_curve->sample_baked(offset);
+			if (stiffness_curve.is_valid()) {
+				joints[j]->stiffness = stiffness * stiffness_curve->sample_baked(offset);
 			} else {
-				joints[j]->stiffness = settings[i]->stiffness;
+				joints[j]->stiffness = stiffness;
 			}
 
-			if (settings[i]->drag_damping_curve.is_valid()) {
-				joints[j]->drag = settings[i]->drag * settings[i]->drag_damping_curve->sample_baked(offset);
+			if (drag_curve.is_valid()) {
+				joints[j]->drag = drag * drag_curve->sample_baked(offset);
 			} else {
-				joints[j]->drag = settings[i]->drag;
+				joints[j]->drag = drag;
 			}
 
-			if (settings[i]->gravity_damping_curve.is_valid()) {
-				joints[j]->gravity = settings[i]->gravity * settings[i]->gravity_damping_curve->sample_baked(offset);
+			if (gravity_curve.is_valid()) {
+				joints[j]->gravity = gravity * gravity_curve->sample_baked(offset);
 			} else {
-				joints[j]->gravity = settings[i]->gravity;
+				joints[j]->gravity = gravity;
 			}
 
-			joints[j]->gravity_direction = settings[i]->gravity_direction;
+			joints[j]->gravity_direction = gravity_direction;
 			joints[j]->rotation_axis = settings[i]->rotation_axis;
 			joints[j]->rotation_axis_vector = settings[i]->rotation_axis_vector;
 		}

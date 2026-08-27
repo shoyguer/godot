@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<class name="SpringBoneSettings" inherits="Resource" api_type="core" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../class.xsd">
+	<brief_description>
+		Shared physics settings for [SpringBoneSimulator3D] bone chains.
+	</brief_description>
+	<description>
+		Holds the radius, stiffness, drag, and gravity used by one or more [SpringBoneSimulator3D] bone chains. Every chain has a [SpringBoneSettings] resource.
+		Assign the same resource to several chains with [method SpringBoneSimulator3D.set_spring_bone_settings] to edit them together. Save the resource to a file to reuse the setup on other characters.
+		Bone names, rotation axis, collisions, and per-joint config stay on each chain and are not stored in this resource.
+	</description>
+	<tutorials>
+	</tutorials>
+	<members>
+		<member name="drag/damping_curve" type="Curve" setter="set_drag_damping_curve" getter="get_drag_damping_curve">
+			Scales [member drag/value] along the bone chain. The curve is sampled from the root joint ([code]0[/code]) to the end joint ([code]1[/code]).
+		</member>
+		<member name="drag/value" type="float" setter="set_drag" getter="get_drag" default="0.4">
+			The drag force of the bone chain. The greater the value, the more suppressed the wiggling.
+		</member>
+		<member name="gravity/damping_curve" type="Curve" setter="set_gravity_damping_curve" getter="get_gravity_damping_curve">
+			Scales [member gravity/value] along the bone chain. The curve is sampled from the root joint ([code]0[/code]) to the end joint ([code]1[/code]).
+		</member>
+		<member name="gravity/direction" type="Vector3" setter="set_gravity_direction" getter="get_gravity_direction" default="Vector3(0, -1, 0)">
+			The gravity direction of the bone chain.
+		</member>
+		<member name="gravity/value" type="float" setter="set_gravity" getter="get_gravity" default="0.0">
+			The gravity of the bone chain.
+		</member>
+		<member name="radius/damping_curve" type="Curve" setter="set_radius_damping_curve" getter="get_radius_damping_curve">
+			Scales [member radius/value] along the bone chain. The curve is sampled from the root joint ([code]0[/code]) to the end joint ([code]1[/code]).
+		</member>
+		<member name="radius/value" type="float" setter="set_radius" getter="get_radius" default="0.02">
+			The joint radius of the bone chain. It is used to move and slide against [SpringBoneCollision3D]s.
+		</member>
+		<member name="stiffness/damping_curve" type="Curve" setter="set_stiffness_damping_curve" getter="get_stiffness_damping_curve">
+			Scales [member stiffness/value] along the bone chain. The curve is sampled from the root joint ([code]0[/code]) to the end joint ([code]1[/code]).
+		</member>
+		<member name="stiffness/value" type="float" setter="set_stiffness" getter="get_stiffness" default="1.0">
+			The stiffness force of the bone chain. The greater the value, the faster it recovers to its initial pose.
+		</member>
+	</members>
+</class>

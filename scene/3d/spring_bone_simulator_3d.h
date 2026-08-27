@@ -31,6 +31,7 @@
 #pragma once
 
 #include "scene/3d/skeleton_modifier_3d.h"
+#include "scene/3d/spring_bone_settings.h"
 #include "scene/resources/curve.h"
 
 #ifndef DISABLE_DEPRECATED
@@ -127,17 +128,11 @@ public:
 		String center_bone_name;
 		int center_bone = -1;
 
+		// Shared physics resource (always valid after the setting is created).
+		Ref<SpringBoneSettings> spring_bone_settings;
+
 		// Cache into joints.
 		bool individual_config = false;
-		float radius = 0.02;
-		Ref<Curve> radius_damping_curve;
-		float stiffness = 1.0;
-		Ref<Curve> stiffness_damping_curve;
-		float drag = 0.4;
-		Ref<Curve> drag_damping_curve;
-		float gravity = 0.0;
-		Ref<Curve> gravity_damping_curve;
-		Vector3 gravity_direction = Vector3(0, -1, 0);
 		RotationAxis rotation_axis = ROTATION_AXIS_ALL;
 		Vector3 rotation_axis_vector = Vector3(1, 0, 0);
 		LocalVector<SpringBone3DJointSetting *> joints;
@@ -178,6 +173,14 @@ protected:
 
 	void _make_joints_dirty(int p_index, bool p_reset = false);
 	void _make_all_joints_dirty();
+
+	void _connect_spring_bone_settings(int p_index);
+	void _disconnect_spring_bone_settings(int p_index);
+	void _ensure_spring_bone_settings(int p_index);
+	void _spring_bone_settings_changed();
+	void _queue_share_identical_migrated_settings();
+	void _share_identical_migrated_settings();
+	bool spring_bone_settings_share_queued = false;
 
 	void _update_joint_array(int p_index);
 	void _update_joints(bool p_reset);
@@ -260,6 +263,9 @@ public:
 	Ref<Curve> get_gravity_damping_curve(int p_index) const;
 	void set_gravity_direction(int p_index, const Vector3 &p_gravity_direction);
 	Vector3 get_gravity_direction(int p_index) const;
+
+	void set_spring_bone_settings(int p_index, const Ref<SpringBoneSettings> &p_settings);
+	Ref<SpringBoneSettings> get_spring_bone_settings(int p_index) const;
 
 	void set_setting_count(int p_count);
 	int get_setting_count() const;

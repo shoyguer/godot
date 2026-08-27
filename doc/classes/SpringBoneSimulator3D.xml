@@ -9,6 +9,8 @@
 		When a bone chain is created, an array is generated from the bones that exist in between and listed in the joint list.
 		Several properties can be applied to each joint, such as [method set_joint_stiffness], [method set_joint_drag], and [method set_joint_gravity].
 		For simplicity, you can set values to all joints at the same time by using a [Curve]. If you want to specify detailed values individually, set [method set_individual_config] to [code]true[/code].
+		Radius, stiffness, drag, and gravity for each chain always come from a [SpringBoneSettings] resource. Each chain gets its own resource by default. Assign the same resource to several chains with [method set_spring_bone_settings] to edit them together. Save the resource to disk to reuse the same hair or cloth setup on other characters. When [method set_individual_config] is [code]true[/code], per-joint values are used for simulation instead of the resource.
+		[b]Note:[/b] Scenes that stored per-chain radius, stiffness, drag, and gravity properties still load; those values are moved into a [SpringBoneSettings] resource. Chains whose migrated physics match exactly share one resource. Saving the scene stores the resource and drops the old properties.
 		For physical simulation, [SpringBoneSimulator3D] can have children as self-standing collisions that are not related to [PhysicsServer3D], see also [SpringBoneCollision3D].
 		[b]Warning:[/b] A scaled [SpringBoneSimulator3D] will likely not behave as expected. Make sure that the parent [Skeleton3D] and its bones are not scaled.
 		[b]Note:[/b] Most methods in this class take an [code]index[/code] parameter. This parameter specifies which setting list entry to return if the IK has multiple entries (e.g. [code]settings/&lt;index&gt;/root_bone_name[/code]).
@@ -90,7 +92,7 @@
 			<return type="float" />
 			<param index="0" name="index" type="int" />
 			<description>
-				Returns the drag force damping curve of the bone chain.
+				Returns the drag force of the bone chain from its [SpringBoneSettings] resource.
 			</description>
 		</method>
 		<method name="get_drag_damping_curve" qualifiers="const">
@@ -147,7 +149,7 @@
 			<return type="float" />
 			<param index="0" name="index" type="int" />
 			<description>
-				Returns the gravity amount of the bone chain.
+				Returns the gravity amount of the bone chain from its [SpringBoneSettings] resource.
 			</description>
 		</method>
 		<method name="get_gravity_damping_curve" qualifiers="const">
@@ -248,7 +250,7 @@
 			<return type="float" />
 			<param index="0" name="index" type="int" />
 			<description>
-				Returns the joint radius of the bone chain.
+				Returns the joint radius of the bone chain from its [SpringBoneSettings] resource.
 			</description>
 		</method>
 		<method name="get_radius_damping_curve" qualifiers="const">
@@ -287,11 +289,18 @@
 				If [method get_rotation_axis] is [constant SkeletonModifier3D.ROTATION_AXIS_ALL], this method returns [code]Vector3(0, 0, 0)[/code].
 			</description>
 		</method>
+		<method name="get_spring_bone_settings" qualifiers="const">
+			<return type="SpringBoneSettings" />
+			<param index="0" name="index" type="int" />
+			<description>
+				Returns the [SpringBoneSettings] resource used by the bone chain at [param index]. A valid chain always has a resource.
+			</description>
+		</method>
 		<method name="get_stiffness" qualifiers="const">
 			<return type="float" />
 			<param index="0" name="index" type="int" />
 			<description>
-				Returns the stiffness force of the bone chain.
+				Returns the stiffness force of the bone chain from its [SpringBoneSettings] resource.
 			</description>
 		</method>
 		<method name="get_stiffness_damping_curve" qualifiers="const">
@@ -305,7 +314,7 @@
 			<return type="bool" />
 			<param index="0" name="index" type="int" />
 			<description>
-				Returns [code]true[/code] if the config can be edited individually for each joint.
+				Returns [code]true[/code] if radius, stiffness, drag, gravity, and rotation axis can be edited for each joint.
 			</description>
 		</method>
 		<method name="is_end_bone_extended" qualifiers="const">
@@ -491,7 +500,7 @@
 			<param index="0" name="index" type="int" />
 			<param index="1" name="enabled" type="bool" />
 			<description>
-				If [param enabled] is [code]true[/code], the config can be edited individually for each joint.
+				If [param enabled] is [code]true[/code], radius, stiffness, drag, gravity, and rotation axis can be edited for each joint. The chain's [SpringBoneSettings] is not applied while this is enabled.
 			</description>
 		</method>
 		<method name="set_joint_drag">
@@ -569,6 +578,7 @@
 			<description>
 				Sets the joint radius of the bone chain. It is used to move and slide with the [SpringBoneCollision3D] in the collision list.
 				The value is scaled by [method set_radius_damping_curve] and cached in each joint setting in the joint list.
+				This writes to the chain's [SpringBoneSettings] resource.
 			</description>
 		</method>
 		<method name="set_radius_damping_curve">
@@ -616,6 +626,15 @@
 				If the vector length is [code]0[/code], it is considered synonymous with [constant SkeletonModifier3D.ROTATION_AXIS_ALL].
 			</description>
 		</method>
+		<method name="set_spring_bone_settings">
+			<return type="void" />
+			<param index="0" name="index" type="int" />
+			<param index="1" name="settings" type="SpringBoneSettings" />
+			<description>
+				Assigns a [SpringBoneSettings] resource to the bone chain at [param index]. Multiple chains can share the same resource so that radius, stiffness, drag, and gravity stay in sync.
+				If [param settings] is [code]null[/code], a new default [SpringBoneSettings] is created. Clearing the resource in the inspector does the same. Root bone, end bone, rotation axis, collisions, and [method set_individual_config] stay on the chain and are not part of the resource.
+			</description>
+		</method>
 		<method name="set_stiffness">
 			<return type="void" />
 			<param index="0" name="index" type="int" />
@@ -646,6 +665,103 @@
 		</member>
 		<member name="setting_count" type="int" setter="set_setting_count" getter="get_setting_count" default="0">
 			The number of settings.
+		</member>
+		<member name="settings/{index}/center_bone_name" type="String" setter="" getter="">
+			The bone used as the simulation center when [member settings/{index}/center_from] is [constant CENTER_FROM_BONE]. Bone movement is calculated from the difference in relative distance between this center and the chain.
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/center_from" type="int" setter="" getter="" enum="SpringBoneSimulator3D.CenterFrom">
+			What the simulation center originates from. Bone movement is calculated from the difference in relative distance between the center and the bone.
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/center_node" type="NodePath" setter="" getter="">
+			The [Node3D] used as the simulation center when [member settings/{index}/center_from] is [constant CENTER_FROM_NODE]. If the node is not found, the parent [Skeleton3D] is used instead.
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/collision_count" type="int" setter="" getter="">
+			The number of collisions in this chain's collision list when [member settings/{index}/enable_all_child_collisions] is [code]false[/code].
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/collisions/{index}" type="NodePath" setter="" getter="">
+			A [SpringBoneCollision3D] that collides with this chain when [member settings/{index}/enable_all_child_collisions] is [code]false[/code].
+		</member>
+		<member name="settings/{index}/enable_all_child_collisions" type="bool" setter="" getter="" default="true">
+			If [code]true[/code], all child [SpringBoneCollision3D]s collide with this chain and [member settings/{index}/exclude_collisions/{index}] is an exclusion list. If [code]false[/code], collisions must be registered with [member settings/{index}/collisions/{index}].
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/end_bone/direction" type="int" setter="" getter="" enum="SkeletonModifier3D.BoneDirection">
+			The tail direction of the extended end bone when [member settings/{index}/extend_end_bone] is [code]true[/code].
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/end_bone/length" type="float" setter="" getter="" default="0.0">
+			The tail length of the extended end bone when [member settings/{index}/extend_end_bone] is [code]true[/code].
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/end_bone_name" type="String" setter="" getter="">
+			The end bone name of the bone chain. Must be the root bone or a child of the root bone. If they are the same, extend the tail with [member settings/{index}/extend_end_bone] to jiggle the bone.
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/exclude_collision_count" type="int" setter="" getter="">
+			The number of exclude collisions when [member settings/{index}/enable_all_child_collisions] is [code]true[/code].
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/exclude_collisions/{index}" type="NodePath" setter="" getter="">
+			A child [SpringBoneCollision3D] to ignore when [member settings/{index}/enable_all_child_collisions] is [code]true[/code].
+		</member>
+		<member name="settings/{index}/extend_end_bone" type="bool" setter="" getter="" default="false">
+			If [code]true[/code], the end bone is extended to have a tail. The tail is allocated to the last joint in the joint list.
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/individual_config" type="bool" setter="" getter="" default="false">
+			If [code]true[/code], radius, stiffness, drag, gravity, and rotation axis can be edited for each joint. The [member settings/{index}/spring_bone_settings] resource is not applied while this is enabled.
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/joint_count" type="int" setter="" getter="">
+			The number of joints generated from the bones between the root and end of the chain.
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/joints/{index}/bone_name" type="String" setter="" getter="">
+			The bone name of this joint. Generated from the bones between the root and end of the chain.
+		</member>
+		<member name="settings/{index}/joints/{index}/drag" type="float" setter="" getter="">
+			The drag force of this joint when [member settings/{index}/individual_config] is [code]true[/code]. The greater the value, the more suppressed the wiggling.
+		</member>
+		<member name="settings/{index}/joints/{index}/gravity" type="float" setter="" getter="">
+			The gravity of this joint when [member settings/{index}/individual_config] is [code]true[/code]. This is a constant velocity of movement in [member settings/{index}/joints/{index}/gravity_direction], not an acceleration.
+		</member>
+		<member name="settings/{index}/joints/{index}/gravity_direction" type="Vector3" setter="" getter="">
+			The gravity direction of this joint when [member settings/{index}/individual_config] is [code]true[/code]. Internally normalized and multiplied by [member settings/{index}/joints/{index}/gravity].
+		</member>
+		<member name="settings/{index}/joints/{index}/radius" type="float" setter="" getter="">
+			The joint radius when [member settings/{index}/individual_config] is [code]true[/code]. Used to move and slide against [SpringBoneCollision3D]s.
+		</member>
+		<member name="settings/{index}/joints/{index}/rotation_axis" type="int" setter="" getter="" enum="SkeletonModifier3D.RotationAxis">
+			The rotation axis of this joint when [member settings/{index}/individual_config] is [code]true[/code]. If set to a specific axis, it acts like a hinge joint. The axes are based on the reference pose immediately before the simulation.
+			[b]Note:[/b] The rotation axis vector and the forward vector shouldn't be colinear to avoid unintended rotation since [SpringBoneSimulator3D] does not factor in twisting forces.
+		</member>
+		<member name="settings/{index}/joints/{index}/rotation_axis_vector" type="Vector3" setter="" getter="">
+			The custom rotation axis of this joint when [member settings/{index}/joints/{index}/rotation_axis] is [constant SkeletonModifier3D.ROTATION_AXIS_CUSTOM]. Internally normalized. A zero vector is treated as [constant SkeletonModifier3D.ROTATION_AXIS_ALL].
+		</member>
+		<member name="settings/{index}/joints/{index}/stiffness" type="float" setter="" getter="">
+			The stiffness of this joint when [member settings/{index}/individual_config] is [code]true[/code]. The greater the value, the faster it recovers to its initial pose. If [code]0[/code], the modified pose will not return to the original pose.
+		</member>
+		<member name="settings/{index}/root_bone_name" type="String" setter="" getter="">
+			The root bone name of the bone chain. The joints are the bones that exist between this bone and [member settings/{index}/end_bone_name].
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/rotation_axis" type="int" setter="" getter="" enum="SkeletonModifier3D.RotationAxis">
+			The rotation axis of the bone chain. If set to a specific axis, it acts like a hinge joint. The value is cached in each joint. The axes are based on the reference pose immediately before the simulation.
+			[b]Note:[/b] The rotation axis vector and the forward vector shouldn't be colinear to avoid unintended rotation since [SpringBoneSimulator3D] does not factor in twisting forces.
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/rotation_axis_vector" type="Vector3" setter="" getter="">
+			The custom rotation axis of the bone chain when [member settings/{index}/rotation_axis] is [constant SkeletonModifier3D.ROTATION_AXIS_CUSTOM]. Internally normalized. A zero vector is treated as [constant SkeletonModifier3D.ROTATION_AXIS_ALL].
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
+		</member>
+		<member name="settings/{index}/spring_bone_settings" type="SpringBoneSettings" setter="" getter="">
+			The [SpringBoneSettings] used by this chain for radius, stiffness, drag, and gravity. Assign the same resource to several chains to edit them together. Clearing this property creates a new default resource.
+			When [member settings/{index}/individual_config] is [code]true[/code], per-joint values are used for simulation instead of this resource.
+			[b]Note:[/b] [code]index[/code] is a value in the [code]0 .. setting_count - 1[/code] range.
 		</member>
 	</members>
 	<constants>
