@@ -2240,7 +2240,7 @@ void RenderingServer::get_argument_options(const StringName &p_function, int p_i
 				r_options->push_back(E.string().quote());
 			}
 		} else if (pf == "has_os_feature") {
-			for (const String E : { "\"rgtc\"", "\"s3tc\"", "\"bptc\"", "\"etc\"", "\"etc2\"", "\"astc\"" }) {
+			for (const String E : { "\"rgtc\"", "\"s3tc\"", "\"bptc\"", "\"etc\"", "\"etc2\"", "\"astc\"", "\"astc_hdr\"" }) {
 				r_options->push_back(E);
 			}
 		}
@@ -2288,6 +2288,7 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("texture_drawable_get_default_material"), &RenderingServer::texture_drawable_get_default_material);
 
 	ClassDB::bind_method(D_METHOD("texture_replace", "texture", "by_texture"), &RenderingServer::texture_replace);
+	ClassDB::bind_method(D_METHOD("texture_replace_compatible", "texture", "by_texture"), &RenderingServer::texture_replace_compatible);
 	ClassDB::bind_method(D_METHOD("texture_set_size_override", "texture", "width", "height"), &RenderingServer::texture_set_size_override);
 
 	ClassDB::bind_method(D_METHOD("texture_set_path", "texture", "path"), &RenderingServer::texture_set_path);
