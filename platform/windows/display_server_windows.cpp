@@ -127,7 +127,7 @@ static void track_mouse_leave_event(HWND hWnd) {
 	TrackMouseEvent(&tme);
 }
 
-static void update_ime_form_positions(HIMC p_himc, const Point2i &p_pos) {
+static void update_ime_form_positions(HIMC p_himc, const Point2i &p_pos, const Rect2i &p_rect) {
 	if (p_himc == (HIMC) nullptr) {
 		return;
 	}
@@ -154,10 +154,17 @@ static void update_ime_form_positions(HIMC p_himc, const Point2i &p_pos) {
 	ImmSetCandidateWindow(p_himc, &cf);
 
 	cf.dwStyle = CFS_EXCLUDE;
-	cf.rcArea.left = p_pos.x;
-	cf.rcArea.right = p_pos.x;
-	cf.rcArea.top = p_pos.y;
-	cf.rcArea.bottom = p_pos.y;
+	if (p_rect == Rect2i()) {
+		cf.rcArea.left = p_pos.x;
+		cf.rcArea.right = p_pos.x + 1;
+		cf.rcArea.top = p_pos.y;
+		cf.rcArea.bottom = p_pos.y + 1;
+	} else {
+		cf.rcArea.left = p_rect.position.x;
+		cf.rcArea.right = p_rect.position.x + p_rect.size.x;
+		cf.rcArea.top = p_rect.position.y;
+		cf.rcArea.bottom = p_rect.position.y + p_rect.size.y;
+	}
 	ImmSetCandidateWindow(p_himc, &cf);
 }
 
@@ -3344,7 +3351,24 @@ void DisplayServerWindows::window_set_ime_position(const Point2i &p_pos, Display
 		return;
 	}
 
-	update_ime_form_positions(himc, wd.im_position);
+	update_ime_form_positions(himc, wd.im_position, wd.im_rect);
+	ImmReleaseContext(wd.hWnd, himc);
+}
+
+void DisplayServerWindows::window_set_ime_rect(const Rect2i &p_rect, DisplayServerEnums::WindowID p_window) {
+	_THREAD_SAFE_METHOD_
+
+	ERR_FAIL_COND(!windows.has(p_window));
+	WindowData &wd = windows[p_window];
+
+	wd.im_rect = p_rect;
+
+	HIMC himc = ImmGetContext(wd.hWnd);
+	if (himc == (HIMC) nullptr) {
+		return;
+	}
+
+	update_ime_form_positions(himc, wd.im_position, wd.im_rect);
 	ImmReleaseContext(wd.hWnd, himc);
 }
 
@@ -4527,6 +4551,9 @@ void DisplayServerWindows::process_events() {
 
 	bool has_touch_events = process_raw_input();
 
+	DisplayServerEnums::WindowID window_id = _get_focused_window_or_popup();
+	const WindowData &wd = windows[window_id];
+
 	// The pump throttles only what the hardware can flood, and drains the rest.
 	// See <https://ph3at.github.io/posts/Windows-Input/> for more information.
 	//
@@ -4560,7 +4587,7 @@ void DisplayServerWindows::process_events() {
 		}
 		return ret;
 	};
-	if (has_touch_events) {
+	if (has_touch_events || wd.ime_active) {
 		// Process all messages.
 		while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
 			TranslateMessage(&msg);
@@ -6923,7 +6950,7 @@ LRESULT DisplayServerWindows::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
 
 		} break;
 		case WM_IME_COMPOSITION: {
-			update_ime_form_positions(windows[window_id].im_himc, windows[window_id].im_position);
+			update_ime_form_positions(windows[window_id].im_himc, windows[window_id].im_position, windows[window_id].im_rect);
 
 			if (windows[window_id].ime_active) {
 				SetCaretPos(windows[window_id].im_position.x, windows[window_id].im_position.y);
@@ -8180,6 +8207,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
 					main_window_created = true;
 				}
 
+#ifdef RD_ENABLED
 				if (_create_rendering_context_window(DisplayServerEnums::MAIN_WINDOW_ID, tested_rendering_driver) == OK) {
 					rendering_device = memnew(RenderingDevice);
 					if (rendering_device->initialize(rendering_context, DisplayServerEnums::MAIN_WINDOW_ID) == OK) {
@@ -8204,6 +8232,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
 
 					_destroy_rendering_context_window(DisplayServerEnums::MAIN_WINDOW_ID);
 				}
+#endif // RD_ENABLED
 			}
 
 			memdelete(rendering_context);
